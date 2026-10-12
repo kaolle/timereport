@@ -1,0 +1,12 @@
+{
+  "name": "timereport-web-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:web": "playwright test",
+    "test:unit": "node --test tests/web/domain.test.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.0"
+  }
+}

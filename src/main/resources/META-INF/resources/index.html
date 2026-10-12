@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="sv">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#183b35">
+    <meta name="description" content="Registrera din arbetstid, även när nätet inte räcker till.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Tidrapport">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="/styles.css">
+    <title>Tidrapport</title>
+    <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+    <a class="skip-link" href="#main">Till innehållet</a>
+    <header class="site-header">
+        <a class="brand" href="/" aria-label="Tidrapport, startsida"><span class="brand-icon" aria-hidden="true">t.</span>Tidrapport</a>
+        <span id="connection" class="connection" role="status">Kontrollerar anslutning</span>
+    </header>
+    <main id="main">
+        <section class="week-bar" aria-label="Välj vecka">
+            <button type="button" id="previous-week" class="icon-button" aria-label="Föregående vecka">←</button>
+            <strong id="week-label"></strong>
+            <button type="button" id="next-week" class="icon-button" aria-label="Nästa vecka">→</button>
+            <button type="button" id="today" class="text-button">Denna vecka</button>
+        </section>
+        <section class="week-total-panel" aria-label="Veckans arbetade tid">
+            <p class="eyebrow">VECKANS ARBETADE TID</p>
+            <strong id="week-total" class="week-total">0 h 00 min</strong>
+        </section>
+        <section id="week-days" class="week-days" aria-label="Veckans dagar"></section>
+        <div id="notice" class="notice" role="status" hidden></div>
+        <section id="conflicts" class="conflicts" role="alert" aria-labelledby="conflict-title" hidden><div class="conflict-heading"><span class="conflict-symbol" aria-hidden="true">!</span><div><p class="eyebrow">BEHÖVER DIN UPPMÄRKSAMHET</p><h2 id="conflict-title">En tid skiljer sig mellan enheten och servern</h2><p>Inget har skrivits över. Välj hur varje registrering ska hanteras.</p></div></div><div id="conflict-list"></div></section>
+        <div id="fatal" class="error-box" role="alert" hidden></div>
+        <section id="entry-panel" class="entry-panel panel" aria-labelledby="form-title" hidden>
+                <div class="section-heading"><div><h2 id="form-title">Ny tid</h2><p id="selected-date-label" class="selected-date-label"></p></div></div>
+                <div id="entry-choices" class="entry-choices" hidden></div>
+                <form id="entry-form">
+                    <fieldset id="entry-fields" disabled>
+                        <div class="time-fields">
+                            <div class="field"><label for="start">Började</label><input type="time" id="start" name="start" step="60" required></div>
+                            <span class="time-divider" aria-hidden="true">—</span>
+                            <div class="field"><label for="end">Slutade</label><input type="time" id="end" name="end" step="60" required></div>
+                        </div>
+                        <div class="field deduction-field">
+                            <label for="deduction">Tid att räkna bort <span>minuter</span></label>
+                            <div class="deduction-controls"><input id="deduction" name="deduction" type="number" min="0" max="1439" step="1" inputmode="numeric" value="30" required aria-describedby="deduction-help"><div class="presets" aria-label="Förval för avdrag"><button type="button" data-deduction="0">0</button><button type="button" data-deduction="30">30</button><button type="button" data-deduction="60">60</button></div></div>
+                            <p id="deduction-help" class="field-help">30 min lunch föreslås på dagens första registrering.</p>
+                        </div>
+                        <div class="field"><label for="customer-code">Kundkod</label><select id="customer-code" name="customerCode" required><option value="">Välj kundkod</option></select><p id="code-help" class="field-help"></p></div>
+                        <div class="field"><label for="comment">Vad arbetade du med? <span>valfritt</span></label><textarea id="comment" name="comment" rows="3" placeholder="Till exempel utveckling, kundmöte eller planering"></textarea></div>
+                        <div class="calculation" aria-live="polite"><span>Arbetad tid</span><output id="preview">8 h 30 min</output></div>
+                        <p id="form-error" class="error-box" role="alert" hidden></p>
+                        <p id="autosave-status" class="autosave-status" role="status"></p>
+                        <button id="new-entry" class="secondary-button" type="button" hidden>+ Ny tid</button>
+                        <button id="delete-current" class="danger-button delete-current" type="button" hidden>Ta bort registrering</button>
+                        <button id="cancel-edit" class="text-button cancel-edit" type="button" hidden>Avbryt redigering</button>
+                    </fieldset>
+                </form>
+        </section>
+        <section class="tools panel" aria-labelledby="tools-title">
+            <div class="section-heading"><div><p class="eyebrow">REDO FÖR NÄSTA ARBETSDAG</p><h2 id="tools-title">På den här enheten</h2></div></div>
+            <p id="offline-readiness" role="status">Förbereder appen för användning utan nät …</p>
+            <div class="tool-actions"><button type="button" id="sync" class="primary-button sync-button">Synka tider nu</button><button type="button" id="refresh" class="secondary-button">Hämta från servern</button><button type="button" id="install" class="secondary-button" hidden>Installera appen</button><button type="button" id="export" class="text-button">Spara en lokal kopia</button></div>
+            <p id="sync-status" class="sync-status" role="status">Synkar när du är ansluten.</p>
+            <p class="field-help">Behåll webbläsarens data tills tiderna har överförts. Rensad lagring kan inte återskapas från servern.</p>
+            <details><summary>Kundkoder och installation</summary>
+                <p id="codes-status">Kundkoder hämtas när du har anslutning och kan sedan användas offline.</p>
+                <form id="code-form" class="code-form"><div class="field"><label for="new-code">Ny kundkod</label><input id="new-code" placeholder="FAIR1234" autocomplete="off" required></div><button id="add-code" class="secondary-button" type="submit">Lägg till online</button></form>
+                <p id="code-error" class="error-box" role="alert" hidden></p>
+                <p class="field-help">På iPhone: öppna i Safari, välj Dela och Lägg till på hemskärmen. På Android finns installation i webbläsarens meny. Installation kräver HTTPS, eller localhost på datorn.</p>
+            </details>
+        </section>
+        <footer><span>Tidrapport</span></footer>
+    </main>
+    <dialog id="delete-dialog" aria-labelledby="delete-title"><h2 id="delete-title">Ta bort registreringen?</h2><p>Den tas bort från dagens översikt på den här enheten.</p><div class="dialog-actions"><button type="button" id="cancel-delete" class="secondary-button">Behåll</button><button type="button" id="confirm-delete" class="danger-button">Ta bort</button></div></dialog>
+    <noscript><p class="error-box">JavaScript behöver vara aktiverat för att registrera och spara tid offline.</p></noscript>
+</body>
+</html>

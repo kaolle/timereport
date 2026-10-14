@@ -1,5 +1,5 @@
-const CACHE = 'timereport-shell-v14';
-const SHELL = ['/', '/index.html', '/styles.css', '/js/app.js', '/js/domain.js', '/js/storage.js', '/js/api.js',
+const CACHE = 'timereport-shell-v24-vacation-style';
+const SHELL = ['/', '/index.html', '/styles.css', '/js/app.js', '/js/domain.js', '/js/storage.js', '/js/api.js', '/js/auth.js',
     '/manifest.json', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', event => {

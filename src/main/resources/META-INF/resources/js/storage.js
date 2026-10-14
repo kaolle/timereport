@@ -1,9 +1,17 @@
-import { validateEntry, remoteEntry, validDate } from './domain.js';
+import {remoteEntry, validateEntry, validDate} from './domain.js';
 
-const DB_NAME = 'timereport-local';
+let DB_NAME;
+
+export function selectAccount(accountId) {
+    if (!/^[0-9a-f-]{36}$/i.test(accountId)) throw new Error('Ett konto krävs för lokal lagring.');
+    const name = `timereport-account-${accountId}`;
+    if (DB_NAME && DB_NAME !== name) throw new Error('Ladda om sidan för att byta konto.');
+    DB_NAME = name;
+}
 let database;
 
 export function openStorage() {
+    if (!DB_NAME) throw new Error('Logga in innan lokal lagring öppnas.');
     if (database) return database;
     database = new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, 3);
@@ -128,6 +136,7 @@ export async function cacheVacationRange(from, to, remote) {
 }
 
 export async function saveEntry(input, expectedRevision = null) {
+    input = {...input, customerCode: input.customerCode?.trim() || null};
     return transaction(['entries', 'codes', 'outbox'], 'readwrite', async tx => {
         const entries = tx.objectStore('entries');
         const all = await requestResult(entries.getAll());
@@ -138,9 +147,13 @@ export async function saveEntry(input, expectedRevision = null) {
             throw new Error('Registreringen ändrades eller togs bort i en annan flik eller på servern. Avbryt redigeringen och öppna den igen.');
         }
         validateEntry(input, all);
-        const code = await requestResult(tx.objectStore('codes').get(input.customerCode));
-        if (!code || (!code.active && current?.customerCode !== input.customerCode)) {
-            throw new Error('Kundkoden är inte tillgänglig. Välj en aktiv kundkod.');
+        if (input.customerCode) {
+            const store = tx.objectStore('codes');
+            const code = await requestResult(store.get(input.customerCode));
+            if (code && !code.active && current?.customerCode !== input.customerCode) {
+                throw new Error('Kundkoden är inaktiv. Välj en aktiv kundkod.');
+            }
+            if (!code) store.put({code: input.customerCode, active: true, version: 0});
         }
         const saved = { ...input, serverVersion: current?.serverVersion ?? 0, localRevision: (current?.localRevision ?? 0) + 1,
             syncState: 'pending', deleted: false, conflict: null, syncError: null, updatedAt: new Date().toISOString() };
@@ -378,9 +391,16 @@ export async function cacheCodes(codes) {
             || typeof code.active !== 'boolean' || !Number.isSafeInteger(code.version) || code.version < 1)) {
         throw new Error('Kundkoderna från servern kunde inte läsas.');
     }
-    return transaction(['codes'], 'readwrite', tx => {
+    return transaction(['codes', 'entries'], 'readwrite', async tx => {
         const store = tx.objectStore('codes');
+        const entries = await requestResult(tx.objectStore('entries').getAll());
         store.clear();
+        const known = new Set(codes.map(code => code.code));
+        for (const entry of entries) {
+            if (!entry.deleted && entry.syncState !== 'synced' && entry.customerCode && !known.has(entry.customerCode)) {
+                store.put({code: entry.customerCode, active: true, version: 0});
+            }
+        }
         codes.forEach(code => store.put(code));
     });
 }

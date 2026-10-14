@@ -44,7 +44,7 @@ export function validateEntry(entry, existing = []) {
     if (!Number.isInteger(entry.deductedMinutes) || entry.deductedMinutes < 0 || entry.deductedMinutes > duration) {
         throw new Error('Avdraget måste vara mellan 0 och arbetspassets längd i minuter.');
     }
-    if (typeof entry.customerCode !== 'string' || !entry.customerCode.trim()) throw new Error('Välj en kundkod.');
+    if (entry.customerCode != null && typeof entry.customerCode !== 'string') throw new Error('Kundkoden måste vara text.');
     if (typeof entry.comment !== 'string') throw new Error('Kommentaren måste vara text.');
     const overlap = existing.some(other => !other.deleted && other.id !== entry.id && other.date === entry.date
         && timeMinutes(entry.start) < timeMinutes(other.end) && timeMinutes(entry.end) > timeMinutes(other.start));

@@ -1,12 +1,12 @@
 package com.timereport.timeentry.domain;
 
+import lombok.Builder;
+
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Objects;
 import java.util.UUID;
-
-import lombok.Builder;
 
 /** One same-day work interval in local business time, with whole-minute precision. */
 @Builder(toBuilder = true)
@@ -26,7 +26,6 @@ public record TimeEntry(
         Objects.requireNonNull(date, "Date is required");
         Objects.requireNonNull(start, "Start time is required");
         Objects.requireNonNull(end, "End time is required");
-        Objects.requireNonNull(customerCode, "Customer code is required");
         if (start.getSecond() != 0 || start.getNano() != 0
                 || end.getSecond() != 0 || end.getNano() != 0) {
             throw new IllegalArgumentException("Times must have whole-minute precision");

@@ -20,7 +20,30 @@
         <a class="brand" href="/" aria-label="Tidrapport, startsida"><span class="brand-icon" aria-hidden="true">t.</span>Tidrapport</a>
         <span id="connection" class="connection" role="status">Kontrollerar anslutning</span>
     </header>
-    <main id="main">
+    <section id="auth-panel" class="panel auth-panel" aria-labelledby="auth-title">
+        <h1 id="auth-title">Ditt konto i Tidrapport</h1>
+        <form id="auth-form">
+            <div class="field"><label for="auth-mode">Välj åtgärd</label><select id="auth-mode">
+                <option value="login">Logga in</option>
+                <option value="register">Skapa konto</option>
+                <option value="forgot-password">Glömt lösenord</option>
+                <option value="verify-email">Bekräfta konto via mejllänk</option>
+                <option value="reset-password">Återställ via mejllänk</option>
+            </select></div>
+            <div class="field"><label for="auth-email">E-postadress</label><input id="auth-email" type="email"
+                                                                                  autocomplete="username"
+                                                                                  maxlength="254" required></div>
+            <div class="field"><label for="auth-password">Lösenord</label><input id="auth-password" type="password"
+                                                                                 autocomplete="current-password"
+                                                                                 maxlength="128" required>
+                <p class="field-help">Nya lösenord ska ha minst 15 tecken.</p></div>
+            <button id="auth-submit" class="primary-button" type="submit">Logga in</button>
+            <p id="auth-status" role="status"></p>
+        </form>
+        <button id="auth-offline" class="text-button" type="button" hidden>Fortsätt med mina lokala tider</button>
+        <p class="field-help">Offlineuppgifter sparas separat per konto på den här enheten.</p>
+    </section>
+    <main id="main" hidden>
         <section class="week-bar" aria-label="Välj vecka">
             <button type="button" id="previous-week" class="icon-button" aria-label="Föregående vecka">←</button>
             <strong id="week-label"></strong>
@@ -50,14 +73,23 @@
                             <div class="deduction-controls"><input id="deduction" name="deduction" type="number" min="0" max="1439" step="1" inputmode="numeric" value="30" required aria-describedby="deduction-help"><div class="presets" aria-label="Förval för avdrag"><button type="button" data-deduction="0">0</button><button type="button" data-deduction="30">30</button><button type="button" data-deduction="60">60</button></div></div>
                             <p id="deduction-help" class="field-help">30 min lunch föreslås på dagens första registrering.</p>
                         </div>
-                        <div class="field"><label for="customer-code">Kundkod</label><select id="customer-code" name="customerCode" required><option value="">Välj kundkod</option></select><p id="code-help" class="field-help"></p></div>
+                        <div class="field"><label for="customer-code">Kundkod (valfri)</label>
+                            <div class="customer-code-controls"><input id="customer-code" name="customerCode"
+                                                                       placeholder="Skriv kundkod"
+                                                                       autocomplete="off"><select id="customer-codes"
+                                                                                                  aria-label="Välj befintlig kundkod">
+                                <option value="">Välj kod…</option>
+                            </select></div>
+                            <button id="save-new-code" class="secondary-button" type="button" hidden>Spara kundkod
+                            </button>
+                            <p id="code-help" class="field-help"></p></div>
                         <div class="field"><label for="comment">Vad arbetade du med? <span>valfritt</span></label><textarea id="comment" name="comment" rows="3" placeholder="Till exempel utveckling, kundmöte eller planering"></textarea></div>
                         <div class="calculation" aria-live="polite"><span>Arbetad tid</span><output id="preview">8 h 30 min</output></div>
                         <p id="form-error" class="error-box" role="alert" hidden></p>
                         <p id="autosave-status" class="autosave-status" role="status"></p>
                         <button id="new-entry" class="secondary-button" type="button" hidden>+ Ny tid</button>
-                        <button id="delete-current" class="danger-button delete-current" type="button" hidden>Ta bort registrering</button>
-                        <button id="cancel-edit" class="text-button cancel-edit" type="button" hidden>Avbryt redigering</button>
+                        <button id="delete-current" class="danger-button delete-current" type="button" hidden>Ta bort
+                        </button>
                     </fieldset>
                 </form>
         </section>
@@ -72,6 +104,28 @@
                 <form id="code-form" class="code-form"><div class="field"><label for="new-code">Ny kundkod</label><input id="new-code" placeholder="FAIR1234" autocomplete="off" required></div><button id="add-code" class="secondary-button" type="submit">Lägg till online</button></form>
                 <p id="code-error" class="error-box" role="alert" hidden></p>
                 <p class="field-help">På iPhone: öppna i Safari, välj Dela och Lägg till på hemskärmen. På Android finns installation i webbläsarens meny. Installation kräver HTTPS, eller localhost på datorn.</p>
+            </details>
+        </section>
+        <section class="panel account-tools">
+            <h2>Konto</h2>
+            <p id="account-email"></p>
+            <button id="reauth" type="button" class="text-button">Logga in igen</button>
+            <button id="logout" type="button" class="secondary-button">Logga ut</button>
+            <details>
+                <summary>Ändra lösenord</summary>
+                <form id="change-password-form">
+                    <div class="field"><label for="current-password">Nuvarande lösenord</label><input
+                            id="current-password" type="password" autocomplete="current-password" maxlength="128"
+                            required></div>
+                    <div class="field"><label for="new-password">Nytt lösenord</label><input id="new-password"
+                                                                                             type="password"
+                                                                                             autocomplete="new-password"
+                                                                                             minlength="15"
+                                                                                             maxlength="128" required>
+                    </div>
+                    <button type="submit" class="primary-button">Ändra lösenord och logga ut</button>
+                    <p id="password-status" role="status"></p>
+                </form>
             </details>
         </section>
         <footer><span>Tidrapport</span></footer>

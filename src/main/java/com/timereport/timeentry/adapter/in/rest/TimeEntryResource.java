@@ -6,15 +6,9 @@ import com.timereport.timeentry.domain.TimeEntry;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.DELETE;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.PUT;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.PathParam;
-import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -33,7 +27,7 @@ public class TimeEntryResource {
     @Path("/{id}")
     public TimeEntryResponse save(@PathParam("id") UUID id, @NotNull @Valid SaveTimeEntryRequest request) {
         var entry = TimeEntry.builder().id(id).date(request.date()).start(request.start()).end(request.end())
-                .deductedMinutes(request.deductedMinutes()).customerCode(new CustomerCode(request.customerCode()))
+                .deductedMinutes(request.deductedMinutes()).customerCode(request.customerCode() == null || request.customerCode().isBlank() ? null : new CustomerCode(request.customerCode()))
                 .comment(request.comment()).build();
         return TimeEntryResponse.from(entries.save(entry, request.expectedVersion()));
     }

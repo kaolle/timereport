@@ -4,9 +4,11 @@ import com.timereport.timeentry.application.port.in.TimeEntries;
 import com.timereport.timeentry.application.port.out.CustomerCodeRepository;
 import com.timereport.timeentry.application.port.out.TimeEntryRepository;
 import com.timereport.timeentry.application.port.out.WriteTransaction;
+import com.timereport.timeentry.domain.RegisteredCustomerCode;
 import com.timereport.timeentry.domain.TimeEntry;
 import com.timereport.timeentry.domain.VersionedTimeEntry;
 import com.timereport.timeentry.domain.WorkDay;
+
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,10 +40,12 @@ public class TimeEntryService implements TimeEntries {
                     && (current.deleted() || current.version() != expectedVersion || expectedVersion == 0)) {
                 throw new ConflictException("Time entry changed or was deleted; reload before saving");
             }
-            var code = codes.find(entry.customerCode())
-                    .orElseThrow(() -> new IllegalArgumentException("Unknown customer code"));
-            if (!code.active() && (current == null || !current.entry().customerCode().equals(entry.customerCode()))) {
-                throw new IllegalArgumentException("Customer code is inactive");
+            if (entry.customerCode() != null) {
+                var code = codes.find(entry.customerCode()).orElse(null);
+                if (code != null && !code.active() && (current == null
+                        || !Objects.equals(current.entry().customerCode(), entry.customerCode()))) {
+                    throw new IllegalArgumentException("Customer code is inactive");
+                }
             }
             var dayEntries = new ArrayList<>(entries.list(entry.date(), entry.date()).stream()
                     .map(VersionedTimeEntry::entry).filter(other -> !other.id().equals(entry.id())).toList());
@@ -50,6 +54,9 @@ public class TimeEntryService implements TimeEntries {
                 WorkDay.builder().date(entry.date()).entries(dayEntries).build();
             } catch (IllegalArgumentException e) {
                 throw new ConflictException(e.getMessage());
+            }
+            if (entry.customerCode() != null && codes.find(entry.customerCode()).isEmpty()) {
+                codes.save(RegisteredCustomerCode.builder().code(entry.customerCode()).active(true).version(1).build(), 0);
             }
             var saved = VersionedTimeEntry.builder().entry(entry).version(expectedVersion + 1).deleted(false).build();
             entries.save(saved, expectedVersion);

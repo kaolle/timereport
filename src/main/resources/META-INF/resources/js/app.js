@@ -1,14 +1,50 @@
-import { today, shiftDate, validDate, workedMinutes, formatMinutes, intervalsOverlap } from './domain.js';
-import { openStorage, snapshot, saveEntry, deleteEntry, setVacationDay, cacheVacationRange, markVacationSynced, cacheCodes, cacheRange, markSyncing, markSyncFailed,
-    markConflict, markTimeEntrySynced, markTimeEntryDeleted, useRemoteTimeEntry, retryWithRemoteVersion, retryRejected } from './storage.js';
-import { fetchCodes, fetchDay, fetchRange, fetchVacationDays, setVacationDayRemote, fetchTimeEntry, uploadTimeEntry, removeTimeEntry, createCode, ApiError } from './api.js';
+import {configureAccountTools, logout, requireAccount} from './auth.js';
+import {formatMinutes, intervalsOverlap, shiftDate, today, validDate, workedMinutes} from './domain.js';
+import {
+    cacheCodes,
+    cacheRange,
+    cacheVacationRange,
+    deleteEntry,
+    markConflict,
+    markSyncFailed,
+    markSyncing,
+    markTimeEntryDeleted,
+    markTimeEntrySynced,
+    markVacationSynced,
+    openStorage,
+    retryRejected,
+    retryWithRemoteVersion,
+    saveEntry,
+    selectAccount,
+    setVacationDay,
+    snapshot,
+    useRemoteTimeEntry
+} from './storage.js';
+import {
+    ApiError,
+    createCode,
+    fetchCodes,
+    fetchDay,
+    fetchRange,
+    fetchTimeEntry,
+    fetchVacationDays,
+    removeTimeEntry,
+    setVacationDayRemote,
+    uploadTimeEntry
+} from './api.js';
 
+const currentAccount = await requireAccount();
+selectAccount(currentAccount.accountId);
+configureAccountTools(currentAccount);
 const $ = id => document.getElementById(id);
 let data = { entries: [], codes: [], outbox: [], vacationDays: [], vacationOutbox: [] };
 let selectedDate = today();
 let autosaveTimer;
+let syncTimer;
+let syncNotBefore = 0;
+let proposedCustomerCode;
+let renderedCodes;
 let inputRevision = 0;
-let editingExisting = false;
 let autoSelectEnabled = true;
 let formOpen = true;
 let renderedWeekStart;
@@ -25,7 +61,7 @@ let refreshing = false;
 let syncing = false;
 let onlineStatus = null;
 let installPrompt;
-const changes = 'BroadcastChannel' in window ? new BroadcastChannel('timereport-changes') : null;
+const changes = 'BroadcastChannel' in window ? new BroadcastChannel(`timereport-changes-${currentAccount.accountId}`) : null;
 
 function message(id, text) {
     $(id).textContent = text;
@@ -68,17 +104,19 @@ function connectionStatus() {
 }
 
 function renderCodes() {
-    const selected = $('customer-code').value || editing?.customerCode;
-    const select = $('customer-code');
-    select.replaceChildren(new Option('Välj kundkod', ''));
+    const list = $('customer-codes');
     const codes = data.codes.filter(code => code.active || code.code === editing?.customerCode)
         .sort((a, b) => a.code.localeCompare(b.code, 'sv'));
-    for (const code of codes) select.add(new Option(`${code.code}${code.active ? '' : ' (inaktiv)'}`, code.code));
-    if (selected && codes.some(code => code.code === selected)) select.value = selected;
-    else if (codes.length === 1) select.value = codes[0].code;
-    $('code-help').textContent = codes.length ? ''
-        : 'Inga kundkoder hämtade. Lägg till en kod under ”Kundkoder och installation” när du har nät.';
-    $('codes-status').textContent = `${data.codes.length} kundkoder sparade på enheten. Nya koder läggs till på servern när du har anslutning.`;
+    const signature = JSON.stringify(codes.map(code => [code.code, code.active]));
+    if (signature !== renderedCodes) {
+        list.replaceChildren(new Option('Välj kod…', ''));
+        for (const code of codes) list.add(new Option(`${code.code}${code.active ? '' : ' (inaktiv)'}`, code.code));
+        renderedCodes = signature;
+    }
+    list.disabled = !codes.length;
+    $('code-help').textContent = 'Lämna tomt eller skriv en ny kod. En ny kod måste bekräftas med sparaknappen, även offline.';
+    if (!isNewCustomerCode()) $('save-new-code').hidden = true;
+    $('codes-status').textContent = `${data.codes.length} kundkoder sparade på enheten.`;
 }
 
 function renderWeek() {
@@ -143,7 +181,10 @@ function renderWeek() {
         vacationButton.classList.toggle('marked', isVacation);
     }
     const animateIn = formPlacedDate !== selectedDate || (formOpen && lastFormOpen === false);
-    weekButtons.get(selectedDate)?.parentElement.after(entryPanel);
+    const selectedSlot = weekButtons.get(selectedDate)?.parentElement;
+    // Moving a focused form in the DOM dismisses mobile keyboards and drops focus.
+    // Only relocate it when the user actually selects another day.
+    if (selectedSlot && entryPanel.previousElementSibling !== selectedSlot) selectedSlot.after(entryPanel);
     entryPanel.hidden = !formOpen;
     if (formPlacedDate !== selectedDate) {
         formPlacedDate = selectedDate;
@@ -174,7 +215,7 @@ function renderEntryChoices(entries) {
     choices.hidden = entries.length < 2;
     for (const entry of entries) {
         const button = element('button', `entry-choice${editing?.id === entry.id ? ' selected' : ''}`,
-            `${entry.start}–${entry.end} · ${entry.customerCode}`);
+            `${entry.start}–${entry.end} · ${entry.customerCode || 'Ingen kundkod'}`);
         button.type = 'button';
         button.setAttribute('aria-pressed', String(editing?.id === entry.id));
         button.addEventListener('click', () => void editEntry(entry));
@@ -203,7 +244,7 @@ async function toggleVacation(date) {
         message('notice', !marked && entries.length
             ? `Dagen markerades som semester och ${entries.length} tidsregistrering${entries.length === 1 ? ' togs' : 'ar togs'} bort. Semestermarkeringen synkas till dina andra enheter.`
             : `Semestermarkeringen ${marked ? 'togs bort' : 'sparades'} och synkas till dina andra enheter.`);
-        void syncPending();
+        scheduleSync();
     } catch (error) {
         message('notice', error.message || 'Semesterdagen kunde inte sparas.');
     }
@@ -216,13 +257,13 @@ function renderConflicts() {
     list.replaceChildren();
     for (const entry of conflicts) {
         const item = element('article', 'conflict-item');
-        item.append(element('strong', '', `${entry.date} · ${entry.start}–${entry.end} · ${entry.customerCode}`));
+        item.append(element('strong', '', `${entry.date} · ${entry.start}–${entry.end} · ${entry.customerCode || 'Ingen kundkod'}`));
         item.append(element('p', '', entry.conflict.message || 'Serverns version skiljer sig från den lokala.'));
         const remote = entry.conflict.serverEntry;
-        if (remote) item.append(element('p', 'conflict-code', `Servern: ${remote.start}–${remote.end} · ${remote.customerCode} · ${remote.comment || 'Ingen kommentar'}`));
-        const local = element('p', 'conflict-code', `Din enhet: ${entry.start}–${entry.end} · ${entry.customerCode} · ${entry.comment || 'Ingen kommentar'}`);
+        if (remote) item.append(element('p', 'conflict-code', `Servern: ${remote.start}–${remote.end} · ${remote.customerCode || 'Ingen kundkod'} · ${remote.comment || 'Ingen kommentar'}`));
+        const local = element('p', 'conflict-code', `Din enhet: ${entry.start}–${entry.end} · ${entry.customerCode || 'Ingen kundkod'} · ${entry.comment || 'Ingen kommentar'}`);
         item.append(local);
-        if (entry.conflict.overlaps?.length) item.append(element('p', '', `Överlappar serverns registrering: ${entry.conflict.overlaps.map(row => `${row.start}–${row.end} (${row.customerCode})`).join(', ')}. Ändra tiden innan du sparar.`));
+        if (entry.conflict.overlaps?.length) item.append(element('p', '', `Överlappar serverns registrering: ${entry.conflict.overlaps.map(row => `${row.start}–${row.end} (${row.customerCode || 'Ingen kundkod'})`).join(', ')}. Ändra tiden innan du sparar.`));
         const actions = element('div', 'conflict-actions');
         if (remote) {
             const useServer = element('button', '', 'Använd serverns version');
@@ -250,18 +291,38 @@ function renderConflicts() {
 }
 
 async function resolveConflict(action) {
-    try { await action(); await reloadLocal(); changes?.postMessage('changed'); void syncPending(); }
+    try {
+        await action();
+        await reloadLocal();
+        changes?.postMessage('changed');
+        scheduleSync();
+    }
     catch (error) { message('notice', error.message || 'Konflikten kunde inte hanteras.'); }
+}
+
+function scheduleSync(delay = 5000) {
+    clearTimeout(syncTimer);
+    syncNotBefore = Date.now() + delay;
+    syncTimer = setTimeout(() => void syncPending(), delay);
 }
 
 async function syncPending(manual = false) {
     if (!ready || syncing || !navigator.onLine) return;
+    if (!manual && Date.now() < syncNotBefore) {
+        clearTimeout(syncTimer);
+        syncTimer = setTimeout(() => void syncPending(), syncNotBefore - Date.now());
+        return;
+    }
+    clearTimeout(syncTimer);
+    if (manual) syncNotBefore = 0;
     syncing = true;
     $('sync').disabled = true;
     try {
         if (manual) await retryRejected();
         let processed = 0;
         while (processed++ < 100 && navigator.onLine) {
+            // Let an in-flight request finish, then pause if new edits arrived.
+            if (!manual && Date.now() < syncNotBefore) break;
             const { outbox, vacationOutbox } = await snapshot();
             const item = outbox.find(row => row.state === 'pending' || row.state === 'sending');
             if (!item) {
@@ -313,7 +374,7 @@ async function syncPending(manual = false) {
                         await markConflict(claim.id, claim.localRevision, { message: overlaps.length ? 'Tiden överlappar en annan registrering på servern.' : 'Registreringen ändrades på servern. Välj vilken version som ska behållas.', serverEntry: remote, overlaps });
                     }
                 } else {
-                    const rejected = error instanceof ApiError && error.status >= 400 && error.status < 500;
+                    const rejected = error instanceof ApiError && error.status >= 400 && error.status < 500 && ![401, 403, 429].includes(error.status);
                     await markSyncFailed(claim.id, claim.localRevision, error.message || 'Överföringen misslyckades.', rejected);
                     break;
                 }
@@ -352,7 +413,7 @@ async function reloadLocal() {
             $('deduction').value = latest.deductedMinutes;
             $('comment').value = latest.comment;
             renderCodes();
-            $('customer-code').value = latest.customerCode;
+            $('customer-code').value = latest.customerCode ?? '';
             preview();
         }
     }
@@ -384,11 +445,10 @@ function preview() {
 function resetForm() {
     clearTimeout(autosaveTimer);
     editing = null;
-    editingExisting = false;
     $('entry-form').reset();
+    $('save-new-code').hidden = true;
     $('deduction').value = dayEntries().length ? 0 : 30;
     $('form-title').textContent = 'Ny tid';
-    $('cancel-edit').hidden = true;
     $('new-entry').hidden = true;
     $('delete-current').hidden = true;
     $('autosave-status').textContent = '';
@@ -412,17 +472,16 @@ async function editEntry(entry) {
     clearTimeout(autosaveTimer);
     autoSelectEnabled = false;
     editing = entry;
-    editingExisting = true;
     $('start').value = entry.start;
     $('end').value = entry.end;
     $('deduction').value = entry.deductedMinutes;
     $('comment').value = entry.comment;
     renderCodes();
-    $('customer-code').value = entry.customerCode;
+    $('customer-code').value = entry.customerCode ?? '';
+    $('save-new-code').hidden = true;
     $('form-title').textContent = 'Ändra arbetstid';
-    $('cancel-edit').hidden = false;
     $('new-entry').hidden = false;
-    $('delete-current').hidden = !editingExisting;
+    $('delete-current').hidden = false;
     $('autosave-status').textContent = '';
     formDirty = false;
     clearFormError();
@@ -501,35 +560,55 @@ async function toggleForm() {
     renderWeek();
 }
 
+function isNewCustomerCode() {
+    const code = $('customer-code').value.trim();
+    return Boolean(code) && !data.codes.some(existing => existing.code === code);
+}
+
 function scheduleAutosave() {
     clearTimeout(autosaveTimer);
-    $('autosave-status').textContent = 'Sparar ändringar …';
+    scheduleSync();
+    $('save-new-code').hidden = true;
+    proposedCustomerCode = null;
+    $('autosave-status').textContent = isNewCustomerCode()
+        ? 'Kontrollerar kundkod …' : 'Sparar ändringar …';
     autosaveTimer = setTimeout(() => void autosave(), 700);
 }
 
-async function autosave() {
+async function autosave(confirmedCode = null) {
     if (busy || !ready) return;
-    if (!$('start').value || !$('end').value || !$('deduction').value || !$('customer-code').value) {
-        $('autosave-status').textContent = 'Fyll i tider och kundkod så sparas registreringen.';
+    const code = $('customer-code').value.trim();
+    if (isNewCustomerCode() && confirmedCode !== code) {
+        proposedCustomerCode = code;
+        $('save-new-code').textContent = `Spara kundkod ”${code}”`;
+        $('save-new-code').hidden = false;
+        $('autosave-status').textContent = 'Ny kundkod. Kontrollera stavningen och tryck på Spara.';
+        return;
+    }
+    if (!$('start').value || !$('end').value || !$('deduction').value) {
+        $('autosave-status').textContent = 'Fyll i tider så sparas registreringen.';
         return;
     }
     const revision = inputRevision;
     const current = editing;
     const input = { id: current?.id ?? crypto.randomUUID(), date: selectedDate, start: $('start').value, end: $('end').value,
-        deductedMinutes: Number($('deduction').value), customerCode: $('customer-code').value, comment: $('comment').value };
+        deductedMinutes: Number($('deduction').value),
+        customerCode: $('customer-code').value.trim() || null,
+        comment: $('comment').value
+    };
     busy = true;
+    $('save-new-code').disabled = true;
     try {
         const saved = await saveEntry(input, current?.localRevision ?? null);
         editing = saved;
         $('new-entry').hidden = false;
-        $('cancel-edit').hidden = !editingExisting;
-        $('delete-current').hidden = !editingExisting;
+        $('delete-current').hidden = false;
         formDirty = inputRevision !== revision;
         clearFormError();
-        $('autosave-status').textContent = 'Sparad lokalt · synkar';
+        $('autosave-status').textContent = 'Sparad lokalt · väntar på synkning';
         await reloadLocal();
         changes?.postMessage('changed');
-        void syncPending();
+        scheduleSync();
         if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
     } catch (error) {
         const text = error.message || 'Kunde inte spara. Rätta uppgifterna och försök igen.';
@@ -539,12 +618,34 @@ async function autosave() {
         $('autosave-status').textContent = '';
     } finally {
         busy = false;
+        $('save-new-code').disabled = false;
         if (formDirty && inputRevision !== revision) scheduleAutosave();
     }
 }
 
+$('customer-codes').addEventListener('change', () => {
+    $('customer-code').value = $('customer-codes').value;
+    $('customer-codes').value = '';
+    $('customer-code').dispatchEvent(new Event('input', {bubbles: true}));
+});
+
+$('save-new-code').addEventListener('click', () => {
+    clearTimeout(autosaveTimer);
+    void autosave($('customer-code').value.trim());
+});
+
 $('entry-form').addEventListener('input', () => { clearFormError(); autoSelectEnabled = false; formDirty = true; inputRevision++; preview(); scheduleAutosave(); });
-$('entry-form').addEventListener('change', () => { clearFormError(); autoSelectEnabled = false; formDirty = true; inputRevision++; scheduleAutosave(); });
+$('entry-form').addEventListener('change', event => {
+    // Blur fires change before a button click. Keep confirmation visible when input
+    // has already handled this same customer-code value.
+    if (event.target.id === 'customer-code' && !$('save-new-code').hidden
+        && proposedCustomerCode === $('customer-code').value.trim()) return;
+    clearFormError();
+    autoSelectEnabled = false;
+    formDirty = true;
+    inputRevision++;
+    scheduleAutosave();
+});
 document.querySelectorAll('[data-deduction]').forEach(button => button.addEventListener('click', () => {
     clearFormError();
     $('deduction').value = button.dataset.deduction;
@@ -567,9 +668,9 @@ $('new-entry').addEventListener('click', async () => {
     }
     resetForm();
 });
-$('cancel-edit').addEventListener('click', () => { if (mayDiscard()) resetForm(); });
 $('delete-current').addEventListener('click', () => {
     if (!editing || busy) return;
+    clearTimeout(autosaveTimer);
     deleting = editing;
     $('delete-dialog').showModal();
 });
@@ -580,8 +681,19 @@ $('next-week').addEventListener('click', () => {
 });
 $('today').addEventListener('click', () => void chooseDate(today()));
 $('refresh').addEventListener('click', () => void refresh(true));
-$('sync').addEventListener('click', () => void syncPending(true));
-$('cancel-delete').addEventListener('click', () => $('delete-dialog').close());
+$('sync').addEventListener('click', async () => {
+    if (formDirty && !busy) {
+        clearTimeout(autosaveTimer);
+        await autosave();
+    }
+    await syncPending(true);
+});
+$('cancel-delete').addEventListener('click', () => {
+    $('delete-dialog').close();
+});
+$('delete-dialog').addEventListener('close', () => {
+    if (formDirty && !busy) scheduleAutosave();
+});
 $('confirm-delete').addEventListener('click', async () => {
     if (!deleting || busy) return;
     busy = true;
@@ -592,7 +704,7 @@ $('confirm-delete').addEventListener('click', async () => {
         if (editing?.id === deleting.id || !formDirty) resetForm();
         changes?.postMessage('changed');
         message('notice', 'Registreringen är borttagen på enheten.');
-        void syncPending();
+        scheduleSync();
     } catch (error) {
         message('notice', error.message || 'Det gick inte att ta bort registreringen.');
     } finally {
@@ -690,4 +802,20 @@ async function start() {
         $('offline-readiness').textContent = 'Lokal lagring är inte redo.';
     }
 }
+
+$('logout').addEventListener('click', async () => {
+    if (busy || syncing || refreshing) {
+        message('notice', 'Vänta tills pågående sparande är klart.');
+        return;
+    }
+    if (formDirty) {
+        await autosave();
+        if (formDirty) return;
+    }
+    try {
+        await logout();
+    } catch {
+        message('notice', 'Utloggning kräver nät så att sessionen kan spärras. Dina lokala ändringar finns kvar.');
+    }
+});
 void start();

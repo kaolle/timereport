@@ -9,13 +9,10 @@ import com.timereport.timeentry.domain.TimeEntry;
 import com.timereport.timeentry.domain.VersionedTimeEntry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -54,12 +51,23 @@ class TimeReportingServiceTest {
     }
 
     @Test
-    void unknownCodesAndNewUseOfInactiveCodesAreRejected() {
-        assertThrows(IllegalArgumentException.class,
-                () -> entries.save(entry().toBuilder().customerCode(new CustomerCode("UNKNOWN")).build(), 0));
+    void newUseOfInactiveCodesIsRejected() {
         codes.save(code, false, 1);
         assertThrows(IllegalArgumentException.class, () -> entries.save(entry(), 0));
         assertTrue(entries.list(date, date).isEmpty());
+    }
+
+    @Test
+    void optionalCodesCanBeAddedInlineAndRemoved() {
+        var withoutCode = entry().toBuilder().customerCode(null).build();
+        entries.save(withoutCode, 0);
+        assertNull(entries.get(withoutCode.id()).entry().customerCode());
+        var newCode = new CustomerCode("INLINE123");
+        var edited = withoutCode.toBuilder().customerCode(newCode).build();
+        entries.save(edited, 1);
+        assertTrue(codes.list().stream().anyMatch(code -> code.code().equals(newCode) && code.active()));
+        entries.save(edited.toBuilder().customerCode(null).build(), 2);
+        assertNull(entries.get(edited.id()).entry().customerCode());
     }
 
     @Test

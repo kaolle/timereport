@@ -1,10 +1,11 @@
 package com.timereport.timeentry.adapter.in.rest;
 
 import com.timereport.timeentry.domain.VersionedTimeEntry;
+import lombok.Builder;
+
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.UUID;
-import lombok.Builder;
 
 @Builder
 public record TimeEntryResponse(UUID id, LocalDate date, LocalTime start, LocalTime end,
@@ -12,7 +13,7 @@ public record TimeEntryResponse(UUID id, LocalDate date, LocalTime start, LocalT
     static TimeEntryResponse from(VersionedTimeEntry saved) {
         var entry = saved.entry();
         return TimeEntryResponse.builder().id(entry.id()).date(entry.date()).start(entry.start()).end(entry.end())
-                .deductedMinutes(entry.deductedMinutes()).customerCode(entry.customerCode().value())
+                .deductedMinutes(entry.deductedMinutes()).customerCode(entry.customerCode() == null ? null : entry.customerCode().value())
                 .comment(entry.comment()).workedMinutes(entry.workedMinutes()).version(saved.version()).build();
     }
 }

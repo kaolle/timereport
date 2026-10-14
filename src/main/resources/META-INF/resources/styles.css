@@ -48,9 +48,39 @@ p { line-height: 1.55; }
 .week-day.vacation { background: #fff9df; border-color: #e4c24d; }
 .week-day.vacation::before { content: ""; position: absolute; z-index: 0; right: 48px; bottom: 7px; width: 34px; aspect-ratio: 1; border: 2px solid #fff; border-radius: 50%; background: conic-gradient(from 20deg, #ef5547 0 22%, #fff 22% 28%, #368fc2 28% 48%, #fff 48% 54%, #f1c83e 54% 74%, #fff 74% 80%, #55a96c 80% 96%, #fff 96%); box-shadow: 0 1px 5px #6c572944; opacity: .86; transform: rotate(-12deg); }
 .week-day.vacation::after { content: "☀"; position: absolute; z-index: 0; right: 0; bottom: -23px; color: #e3b51f; opacity: .34; font-size: 82px; line-height: 1; }
-.vacation-toggle { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 30px; width: 100%; border-radius: 0 0 8px 8px; background: #e8eadf; color: var(--muted); font-size: 10px; padding: 4px 8px; cursor: pointer; }
-.vacation-toggle input { width: 16px; height: 16px; margin: 0; accent-color: var(--green); }
-.vacation-toggle.marked { color: #586b2e; background: #e3ebd4; font-weight: 700; }
+
+.vacation-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 7px;
+    min-height: 44px;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 10px;
+    padding: 4px 10px;
+    cursor: pointer;
+}
+
+.vacation-toggle input {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    min-height: 16px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    accent-color: var(--green);
+}
+
+.vacation-toggle.marked {
+    color: #586b2e;
+    font-weight: 700;
+}
 .vacation-toggle:has(input:disabled) { opacity: .42; cursor: not-allowed; }
 .week-day:disabled { opacity: .42; cursor: not-allowed; background: #eceee8; }
 .week-day:disabled.selected { border-color: var(--line); }
@@ -90,7 +120,6 @@ textarea::placeholder, input::placeholder { color: #81897f; }
 .save-note { color: var(--muted); text-align: center; font-size: 11px; margin: 12px 0 0; }
 .selected-date-label { margin: 5px 0 0; color: var(--muted); font-size: 13px; text-transform: capitalize; }
 .autosave-status { margin: 4px 0 12px; color: var(--muted); font-size: 12px; }
-.cancel-edit { width: 100%; margin-top: 8px; }
 .total-panel { background: var(--ink); color: #fff; border-radius: 18px; padding: 26px; display: grid; grid-template-columns: 1fr auto; }
 .total-panel .eyebrow { color: #c4d2bb; font-size: 10px; }
 .total { font-size: 45px; font-weight: 550; letter-spacing: -1.6px; }
@@ -153,7 +182,94 @@ dialog::backdrop { background: #10262080; }
 dialog p { font-size: 14px; color: var(--muted); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px; }
 .danger-button { background: var(--red); color: white; padding: 12px 18px; }
-@media (min-width: 760px) { main { padding-top: 32px; } .workspace { grid-template-columns: 1.1fr 1fr; gap: 32px; } .panel { padding: 30px; } .week-days { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; } .week-day { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto; gap: 3px; align-items: start; min-height: 126px; padding: 12px 10px; } .week-day-name, .week-day-total, .week-day-count { grid-column: auto; grid-row: auto; } .vacation-toggle { min-height: 28px; } .tools { padding: 26px 30px; } .code-form { max-width: 460px; } }
-@media (max-width: 759px) { .week-day-slot { display: flex; align-items: stretch; gap: 6px; } .week-day-slot .week-day { flex: 1 1 auto; min-width: 0; } .week-day-slot .vacation-toggle { flex: 0 0 auto; width: auto; min-width: 44px; min-height: 44px; align-self: center; border-radius: 8px; padding: 0 9px; } }
+
+@media (min-width: 760px) {
+    main {
+        padding-top: 32px;
+    }
+
+    .workspace {
+        grid-template-columns: 1.1fr 1fr;
+        gap: 32px;
+    }
+
+    .panel {
+        padding: 30px;
+    }
+
+    .week-days {
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    .week-day {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto auto;
+        gap: 3px;
+        align-items: start;
+        min-height: 126px;
+        padding: 12px 10px;
+    }
+
+    .week-day-name, .week-day-total, .week-day-count {
+        grid-column: auto;
+        grid-row: auto;
+    }
+
+    .vacation-toggle {
+        justify-content: flex-start;
+    }
+
+    .tools {
+        padding: 26px 30px;
+    }
+
+    .code-form {
+        max-width: 460px;
+    }
+}
+
+@media (max-width: 759px) {
+    .week-day-slot {
+        display: flex;
+        align-items: stretch;
+        gap: 6px;
+    }
+
+    .week-day-slot .week-day {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .week-day-slot .vacation-toggle {
+        flex: 0 0 auto;
+        width: auto;
+        min-width: 44px;
+        min-height: 44px;
+        align-self: center;
+        padding: 0 9px;
+    }
+}
 @media (max-width: 359px) { main { padding-inline: 12px; } .site-header { padding-inline: 14px; } .panel { padding: 22px 16px; } .connection { font-size: 10px; } .time-fields { grid-template-columns: 1fr; gap: 0; } .time-divider { display: none; } .total { font-size: 38px; } .presets button { min-width: 42px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation-duration: .01ms !important; scroll-behavior: auto !important; } }
+
+.auth-panel {
+    max-width: 28rem;
+    margin: 2rem auto;
+    padding: 1.5rem;
+}
+
+.auth-panel input, .account-tools input {
+    width: 100%;
+    min-height: 44px;
+}
+
+.account-tools {
+    margin-top: 1rem;
+}
+
+.customer-code-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 115px;
+    gap: 8px;
+}

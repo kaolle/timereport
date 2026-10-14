@@ -24,6 +24,21 @@ class JdbcPersistenceTest {
     @Inject CustomerCodeRepository codes;
     @Inject TimeEntryRepository entries;
     @Inject DataSource dataSource;
+    @io.quarkus.test.InjectMock
+    com.timereport.authentication.application.port.in.AccountIdentity identity;
+    @Inject
+    com.timereport.authentication.application.port.out.AuthRepository authRepository;
+
+    @org.junit.jupiter.api.BeforeEach
+    void account() {
+        var id = UUID.randomUUID();
+        authRepository.atomic(() -> {
+            authRepository.save(new com.timereport.authentication.domain.Account(id, id + "@example.test", "test", true));
+            return null;
+        });
+        org.mockito.Mockito.when(identity.accountId()).thenReturn(id);
+    }
+
 
     @Test
     void failedTransactionRollsBackPreviouslyExecutedWrites() {

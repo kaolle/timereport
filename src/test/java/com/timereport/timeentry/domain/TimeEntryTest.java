@@ -1,16 +1,15 @@
 package com.timereport.timeentry.domain;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.util.UUID;
-
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class TimeEntryTest {
     @Test
@@ -70,7 +69,7 @@ class TimeEntryTest {
         assertThrows(NullPointerException.class, () -> validEntry().date(null).build());
         assertThrows(NullPointerException.class, () -> validEntry().start(null).build());
         assertThrows(NullPointerException.class, () -> validEntry().end(null).build());
-        assertThrows(NullPointerException.class, () -> validEntry().customerCode(null).build());
+        assertNull(validEntry().customerCode(null).build().customerCode());
     }
 
     @Test

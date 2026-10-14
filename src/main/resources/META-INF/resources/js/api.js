@@ -1,3 +1,5 @@
+import {authenticatedFetch} from './auth.js';
+
 export class ApiError extends Error {
     constructor(status, message) {
         super(message);
@@ -6,7 +8,7 @@ export class ApiError extends Error {
 }
 
 async function jsonRequest(path, options = {}) {
-    const response = await fetch(path, { cache: 'no-store', signal: AbortSignal.timeout(8000), ...options });
+    const response = await authenticatedFetch(path, {cache: 'no-store', signal: AbortSignal.timeout(8000), ...options});
     if (response.status === 204) return undefined;
     let body;
     try { body = await response.json(); } catch { body = null; }

@@ -60,6 +60,10 @@ origin, including its port. The default is `http://localhost:8080`.
 
 ## Mobile web app, offline storage, and synchronization (stage 4)
 
+The top menu separates **Tider**, **Månadsrapport**, **Kundkoder**, and **Konto**.
+**Tider** is always the default after login or opening/reloading the app.
+Switching views during a session preserves the selected week and any form input.
+
 The Swedish, mobile-first UI provides a week view with a weekly total. On desktop,
 all seven days remain on one row with the selected day's form below the whole week.
 After login, page reload, or week navigation, no day is selected and the form stays
@@ -82,7 +86,8 @@ On first use, connect to the server and log in. Customer code is optional. Use
 After a 0.7-second typing pause, an unknown code shows **Spara kundkod ”kod”**;
 confirm it before the code and time are saved. Existing codes and entries without
 a code still autosave. New codes are created on synchronization, and confirmation
-also works offline. **Kundkoder och installation** can still add codes directly online.
+also works offline. **Kundkoder** can
+still add codes directly online.
 Previously fetched codes and entries remain available offline. Days not previously
 fetched can have an incomplete local view; the server checks all entries when a
 queued change is uploaded.
@@ -97,10 +102,18 @@ entries asks for confirmation before deleting those entries.
 IndexedDB stores entries and a pending-write queue in the same transaction. Changes
 are saved locally first after a 0.7-second typing pause. Automatic upload waits
 about five seconds after the latest saved edit, combining repeated edits to the same
-entry into the latest queued version. **Synka tider nu** saves valid pending form
-changes and uploads the queue immediately; unconfirmed new codes remain unsaved.
-Opening the app, reconnecting, and refreshing attempt synchronization, while
-respecting a pending automatic delay. An in-flight request can finish while new
+entry into the latest queued version. Five seconds is an upload delay after editing,
+not a bidirectional polling interval. Opening the app, reconnecting, and changing
+weeks automatically upload pending changes and fetch the displayed week, respecting
+a pending upload delay. Returning to the app also refreshes that week and any open
+monthly report; return events are throttled to at most once per 30 seconds.
+
+The main view only shows a compact status when changes are waiting or an error
+needs attention. **Konto → Fler alternativ** contains manual sync/refresh, a local
+JSON copy, and installation information for occasional use. Customer codes have
+their own **Kundkoder** menu view. **Synka tider nu**
+saves valid pending form changes and uploads immediately; unconfirmed new codes
+remain unsaved. An in-flight request can finish while new
 edits are being saved locally.
 
 Edits use server versions and deletes retain tombstones until accepted. A local
@@ -108,7 +121,8 @@ revision check protects edits made in another tab. HTTP 409 conflicts preserve b
 versions and require an explicit choice; overlapping entries must be edited before
 retrying. Rejected changes stay local and can be retried after correcting the cause.
 
-Wait for **Redo utan nät** before closing the app or disconnecting. The service worker
+Offline readiness and installation information are available under
+**Konto → Fler alternativ**. Wait for **Redo utan nät** before first offline use. The service worker
 caches the app shell, not API responses. IndexedDB holds user data. Installation uses
 the browser's install action; on iPhone use Safari's Share → Add to Home Screen.
 Service workers need HTTPS, except for localhost/loopback development. Opening the
@@ -156,19 +170,30 @@ time entry, and responsive week layout. `npm run test:web` runs all browser suit
 Screenshots and failure traces are written under `test-results/`. Physical
 iOS/Android testing is still required before production use.
 
+## Customer codes
+
+The **Kundkoder** view lists active codes. **Ta bort** asks for confirmation and
+inactivates the code using its current server version; it disappears from normal
+selection for new entries. Existing time entries and monthly reports retain the
+code. **Borttagna kundkoder → Återställ** makes an inactive code available again.
+Adding, removing, and restoring codes from this view require a connection. Removal
+is disabled while local changes using the code are awaiting synchronization.
+Historical entries can still retain an inactive code when corrected. No entries
+are deleted and no database migration is needed.
+
 ## Monthly reports
 
-Open **Månadsrapport** below the time-entry view and select a month. The report
+Select **Månadsrapport** in the top menu and choose a month. The report
 lists each ISO week (Monday–Sunday), with worked time per customer code, a weekly
 total, and the month total. Only dates inside the selected month contribute to
 boundary weeks. Times without a code appear under **Utan kundkod**; empty weeks
 show zero. Totals use net worked minutes after lunch/deductions, displayed as hours
 and minutes. Deleted entries and vacation days contribute no worked time.
 
-Opening the report fetches the full month's time entries through the existing
+Selecting the report fetches the full month's time entries through the existing
 account-authenticated range API. Local pending edits, additions, and deletions are
 preserved and included in the totals. **Hämta månadens tider** refreshes that month;
-it does not upload pending changes. Report requests are made when the panel opens,
+it does not upload pending changes. Report requests are made when the report view opens,
 the month changes, or a refresh is requested, rather than for every autosaved edit.
 The visible totals update when local entries change.
 

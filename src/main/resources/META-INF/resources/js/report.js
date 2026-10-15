@@ -26,7 +26,7 @@ export function configureMonthlyReport({onCache}) {
 
     function render(data) {
         local = data;
-        if (!panel.open) return;
+        if (panel.hidden) return;
         let report;
         try {
             report = buildMonthlyReport(month.value, data.entries);
@@ -121,16 +121,13 @@ export function configureMonthlyReport({onCache}) {
         }
     }
 
-    panel.addEventListener('toggle', () => {
-        if (panel.open) void load();
-    });
     month.addEventListener('change', () => void load());
     refresh.addEventListener('click', () => void load());
     window.addEventListener('offline', () => {
         if (local) render(local);
     });
     window.addEventListener('online', () => {
-        if (panel.open) void load();
+        if (!panel.hidden) void load();
     });
-    return {render};
+    return { render, refreshIfOpen: () => !panel.hidden ? load() : Promise.resolve() };
 }

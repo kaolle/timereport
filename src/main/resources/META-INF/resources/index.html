@@ -44,6 +44,16 @@
         <p class="field-help">Offlineuppgifter sparas separat per konto på den här enheten.</p>
     </section>
     <main id="main" hidden>
+        <nav class="main-navigation" aria-label="Huvudmeny">
+            <button type="button" data-view="time" aria-controls="time-view" aria-current="page">Tider</button>
+            <button type="button" data-view="report" aria-controls="monthly-report">Månadsrapport</button>
+            <button type="button" data-view="codes" aria-controls="codes-view">Kundkoder</button>
+            <button type="button" data-view="account" aria-controls="account-view">Konto</button>
+        </nav>
+        <p id="sync-summary" class="sync-summary" role="status" hidden></p>
+        <div id="notice" class="notice" role="status" hidden></div>
+        <div id="fatal" class="error-box" role="alert" hidden></div>
+        <div id="time-view" data-view-panel="time">
         <section class="week-bar" aria-label="Välj vecka">
             <button type="button" id="previous-week" class="icon-button" aria-label="Föregående vecka">←</button>
             <strong id="week-label"></strong>
@@ -55,9 +65,7 @@
             <strong id="week-total" class="week-total">0 h 00 min</strong>
         </section>
         <section id="week-days" class="week-days" aria-label="Veckans dagar"></section>
-        <div id="notice" class="notice" role="status" hidden></div>
         <section id="conflicts" class="conflicts" role="alert" aria-labelledby="conflict-title" hidden><div class="conflict-heading"><span class="conflict-symbol" aria-hidden="true">!</span><div><p class="eyebrow">BEHÖVER DIN UPPMÄRKSAMHET</p><h2 id="conflict-title">En tid skiljer sig mellan enheten och servern</h2><p>Inget har skrivits över. Välj hur varje registrering ska hanteras.</p></div></div><div id="conflict-list"></div></section>
-        <div id="fatal" class="error-box" role="alert" hidden></div>
         <section id="entry-panel" class="entry-panel panel" aria-labelledby="form-title" hidden>
                 <div class="section-heading"><div><h2 id="form-title">Ny tid</h2><p id="selected-date-label" class="selected-date-label"></p></div></div>
                 <div id="entry-choices" class="entry-choices" hidden></div>
@@ -106,8 +114,9 @@
                     </fieldset>
                 </form>
         </section>
-        <details id="monthly-report" class="panel monthly-report">
-            <summary>Månadsrapport</summary>
+        </div>
+        <section id="monthly-report" class="panel monthly-report" data-view-panel="report" aria-labelledby="report-title" hidden>
+            <h2 id="report-title">Månadsrapport</h2>
             <div class="report-controls">
                 <div class="field"><label for="report-month">Månad</label><input id="report-month" type="month"
                                                                                  required></div>
@@ -117,22 +126,18 @@
                 min</strong></div>
             <p id="report-status" class="field-help" role="status"></p>
             <div id="report-weeks" class="report-weeks"></div>
-        </details>
-        <section class="tools panel" aria-labelledby="tools-title">
-            <div class="section-heading"><div><p class="eyebrow">REDO FÖR NÄSTA ARBETSDAG</p><h2 id="tools-title">På den här enheten</h2></div></div>
-            <p id="offline-readiness" role="status">Förbereder appen för användning utan nät …</p>
-            <div class="tool-actions"><button type="button" id="sync" class="primary-button sync-button">Synka tider nu</button><button type="button" id="refresh" class="secondary-button">Hämta från servern</button><button type="button" id="install" class="secondary-button" hidden>Installera appen</button><button type="button" id="export" class="text-button">Spara en lokal kopia</button></div>
-            <p id="sync-status" class="sync-status" role="status">Synkar när du är ansluten.</p>
-            <p class="field-help">Behåll webbläsarens data tills tiderna har överförts. Rensad lagring kan inte återskapas från servern.</p>
-            <details><summary>Kundkoder och installation</summary>
-                <p id="codes-status">Kundkoder hämtas när du har anslutning och kan sedan användas offline.</p>
-                <form id="code-form" class="code-form"><div class="field"><label for="new-code">Ny kundkod</label><input id="new-code" placeholder="FAIR1234" autocomplete="off" required></div><button id="add-code" class="secondary-button" type="submit">Lägg till online</button></form>
-                <p id="code-error" class="error-box" role="alert" hidden></p>
-                <p class="field-help">På iPhone: öppna i Safari, välj Dela och Lägg till på hemskärmen. På Android finns installation i webbläsarens meny. Installation kräver HTTPS, eller localhost på datorn.</p>
-            </details>
         </section>
-        <section class="panel account-tools">
-            <h2>Konto</h2>
+            <section id="codes-view" class="panel codes-view" data-view-panel="codes" aria-labelledby="codes-title" hidden>
+                <h2 id="codes-title">Kundkoder</h2>
+                <p id="codes-status">Kundkoder hämtas när du har anslutning och kan sedan användas offline.</p>
+                <ul id="code-list" class="code-list" aria-label="Dina kundkoder"></ul>
+                <p class="field-help">Borttagna koder sparas i historiken. För att ta bort eller återställa behöver du vara online och ha synkat eventuella tidsändringar.</p>
+                <details id="removed-codes" hidden><summary>Borttagna kundkoder</summary><ul id="removed-code-list" class="code-list" aria-label="Borttagna kundkoder"></ul></details>
+                <form id="code-form" class="code-form"><div class="field"><label for="new-code">Ny kundkod</label><input id="new-code" placeholder="FAIR1234" autocomplete="off" required></div><button id="add-code" class="secondary-button" type="submit">Lägg till</button></form>
+                <p id="code-error" class="error-box" role="alert" hidden></p>
+            </section>
+        <section id="account-view" class="panel account-tools" data-view-panel="account" aria-labelledby="account-title" hidden>
+            <h2 id="account-title">Konto</h2>
             <p id="account-email"></p>
             <button id="reauth" type="button" class="text-button">Logga in igen</button>
             <button id="logout" type="button" class="secondary-button">Logga ut</button>
@@ -152,6 +157,13 @@
                     <p id="password-status" role="status"></p>
                 </form>
             </details>
+        <details id="local-tools" class="local-tools"><summary>Fler alternativ</summary>
+            <p id="offline-readiness" role="status">Förbereder appen för användning utan nät …</p>
+            <div class="tool-actions"><button type="button" id="sync" class="primary-button sync-button">Synka tider nu</button><button type="button" id="refresh" class="secondary-button">Hämta från servern</button><button type="button" id="install" class="secondary-button" hidden>Installera appen</button><button type="button" id="export" class="text-button">Spara en lokal kopia</button></div>
+            <p id="sync-status" class="sync-status" role="status">Synkar när du är ansluten.</p>
+                <p class="field-help">På iPhone: öppna i Safari, välj Dela och Lägg till på hemskärmen. På Android finns installation i webbläsarens meny. Installation kräver HTTPS, eller localhost på datorn.</p>
+
+        </details>
         </section>
         <footer><span>Tidrapport</span></footer>
     </main>

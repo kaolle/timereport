@@ -7,7 +7,7 @@ const snapshot = page => page.evaluate(async () => (await import('/js/storage.js
 const selectedDate = page => page.locator('.week-day.selected').getAttribute('data-date');
 
 async function mockApi(context, entries = [], codes = [code]) {
-    const state = {entries, codes, writes: []};
+    const state = {entries, codes, writes: [], reads: []};
     await context.route('**/api/**', async route => {
         const request = route.request();
         const path = new URL(request.url()).pathname;
@@ -20,7 +20,10 @@ async function mockApi(context, entries = [], codes = [code]) {
         });
         if (path === '/api/customer-codes' && request.method() === 'GET') return route.fulfill({json: state.codes});
         if (path === '/api/vacation-days') return route.fulfill({json: []});
-        if (path === '/api/time-entries' && request.method() === 'GET') return route.fulfill({json: state.entries});
+        if (path === '/api/time-entries' && request.method() === 'GET') {
+            state.reads.push(request.url());
+            return route.fulfill({json: state.entries});
+        }
         if (path === '/api/customer-codes/FAIR1234' && request.method() === 'PUT') {
             state.codes = [code];
             return route.fulfill({json: code});
@@ -52,8 +55,11 @@ async function save(page, comment = 'Utveckling av kundportal', start = '08:00',
 }
 
 async function refresh(page) {
+    await page.getByRole('button', { name: 'Konto', exact: true }).click();
+    if (!await page.locator('#local-tools').evaluate(details => details.open)) await page.getByText('Fler alternativ', { exact: true }).click();
     await page.locator('#refresh').click();
     await expect(page.locator('#refresh')).toBeEnabled();
+    await page.getByRole('button', { name: 'Tider', exact: true }).click();
 }
 
 async function remove(page) {
@@ -120,6 +126,8 @@ test('failed synchronization and refresh preserve pending edits and deletion tom
     await expect(page.locator('#comment')).toHaveValue('Från servern');
     await page.locator('#comment').fill('Lokal ändring');
     await expect.poll(async () => (await snapshot(page)).entries[0].comment).toBe('Lokal ändring');
+    await page.getByRole('button', { name: 'Konto', exact: true }).click();
+    if (!await page.locator('#local-tools').evaluate(details => details.open)) await page.getByText('Fler alternativ', { exact: true }).click();
     await page.locator('#sync').click();
     await expect(page.locator('#sync')).toBeEnabled();
     await expect.poll(() => state.writes.length).toBe(1);
@@ -225,10 +233,11 @@ test('empty customer catalogue allows optional codes and adding an online code',
     await open(page);
     await expect(page.locator('#customer-code')).toBeEnabled();
     await expect(page.locator('#customer-codes')).toBeDisabled();
-    await page.getByText('Kundkoder och installation', {exact: true}).click();
+    await page.getByRole('button', { name: 'Kundkoder', exact: true }).click();
     await page.locator('#new-code').fill('FAIR1234');
     await page.locator('#add-code').click();
     await expect(page.locator('#customer-codes')).toBeEnabled();
+    await page.getByRole('button', { name: 'Tider', exact: true }).click();
     await page.locator('#customer-codes').selectOption('FAIR1234');
     await expect(page.locator('#customer-code')).toHaveValue('FAIR1234');
 });
@@ -246,4 +255,45 @@ test('mobile and desktop layouts fit the viewport and provide installation asset
     const manifest = await (await page.request.get(`${origin}/manifest.json`)).json();
     expect(manifest.display).toBe('standalone');
     for (const icon of manifest.icons) expect((await page.request.get(new URL(icon.src, origin).href)).ok()).toBe(true);
+});
+
+
+test('normal view hides device tools and shows only a compact pending status', async ({ page, context }) => {
+    await mockApi(context);
+    await open(page);
+    await expect(page.getByText('REDO FÖR NÄSTA ARBETSDAG', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'På den här enheten' })).toHaveCount(0);
+    await expect(page.locator('#sync-summary')).toBeHidden();
+    await expect(page.locator('#sync')).toBeHidden();
+    await expect(page.locator('#refresh')).toBeHidden();
+    await expect(page.locator('#export')).toBeHidden();
+    await context.setOffline(true);
+    await save(page, 'Sparad utan verktygspanel');
+    await expect(page.locator('#sync-summary')).toContainText('sparad lokalt');
+    await expect(page.locator('#sync-summary')).toContainText('väntar på anslutning');
+    await page.getByRole('button', { name: 'Konto', exact: true }).click();
+    await page.getByText('Fler alternativ', { exact: true }).click();
+    await expect(page.locator('#sync')).toBeVisible();
+    await expect(page.locator('#export')).toBeVisible();
+});
+
+test('returning to the app downloads updated server data without manual refresh and throttles repeated events', async ({ page, context }) => {
+    const state = await mockApi(context);
+    await open(page);
+    const date = await selectedDate(page);
+    state.entries = [{ id: '99999999-9999-4999-8999-999999999999', date, start: '08:00', end: '17:00',
+        deductedMinutes: 30, customerCode: 'FAIR1234', comment: 'Ändrad på annan enhet', version: 1 }];
+    const before = state.reads.length;
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
+    await page.clock.runFor(31000);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect.poll(async () => (await snapshot(page)).entries[0]?.comment).toBe('Ändrad på annan enhet');
+    await expect.poll(() => state.reads.length).toBe(before + 1);
+    await page.evaluate(() => {
+        window.dispatchEvent(new Event('focus'));
+        document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(state.reads).toHaveLength(before + 1);
+    await expect(page.locator('#refresh')).toBeHidden();
 });

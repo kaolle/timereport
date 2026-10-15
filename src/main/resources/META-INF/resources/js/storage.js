@@ -387,6 +387,18 @@ export async function retryWithRemoteVersion(id, localRevision) {
     });
 }
 
+export async function cacheCustomerCode(code) {
+    if (typeof code?.code !== 'string' || !code.code.trim() || typeof code.active !== 'boolean'
+            || !Number.isSafeInteger(code.version) || code.version < 1) {
+        throw new Error('Kundkoden från servern kunde inte läsas.');
+    }
+    return transaction(['codes'], 'readwrite', async tx => {
+        const store = tx.objectStore('codes');
+        const current = await requestResult(store.get(code.code));
+        if (!current || current.version <= code.version) store.put(code);
+    });
+}
+
 export async function cacheCodes(codes) {
     if (!Array.isArray(codes) || codes.some(code => typeof code.code !== 'string' || !code.code.trim()
             || typeof code.active !== 'boolean' || !Number.isSafeInteger(code.version) || code.version < 1)) {
@@ -395,14 +407,20 @@ export async function cacheCodes(codes) {
     return transaction(['codes', 'entries'], 'readwrite', async tx => {
         const store = tx.objectStore('codes');
         const entries = await requestResult(tx.objectStore('entries').getAll());
-        store.clear();
-        const known = new Set(codes.map(code => code.code));
+        // Codes are never physically deleted on the server. A delayed catalogue read
+        // must not overwrite a newer deactivation or restoration with an old version.
+        const merged = new Map((await requestResult(store.getAll())).filter(code => code.version > 0)
+            .map(code => [code.code, code]));
+        for (const code of codes) {
+            if (!merged.has(code.code) || merged.get(code.code).version <= code.version) merged.set(code.code, code);
+        }
         for (const entry of entries) {
-            if (!entry.deleted && entry.syncState !== 'synced' && entry.customerCode && !known.has(entry.customerCode)) {
-                store.put({code: entry.customerCode, active: true, version: 0});
+            if (!entry.deleted && entry.syncState !== 'synced' && entry.customerCode && !merged.has(entry.customerCode)) {
+                merged.set(entry.customerCode, { code: entry.customerCode, active: true, version: 0 });
             }
         }
-        codes.forEach(code => store.put(code));
+        store.clear();
+        for (const code of merged.values()) store.put(code);
     });
 }
 

@@ -33,6 +33,7 @@ export const uploadTimeEntry = (entry, expectedVersion) => jsonRequest(`/api/tim
 });
 export const removeTimeEntry = (id, expectedVersion) => jsonRequest(
     `/api/time-entries/${encodeURIComponent(id)}?expectedVersion=${encodeURIComponent(expectedVersion)}`, { method: 'DELETE' });
-export const createCode = code => jsonRequest(`/api/customer-codes/${encodeURIComponent(code)}`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: true, expectedVersion: 0 })
+export const saveCode = (code, active, expectedVersion) => jsonRequest(`/api/customer-codes/${encodeURIComponent(code)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active, expectedVersion })
 });
+export const createCode = code => saveCode(code, true, 0);

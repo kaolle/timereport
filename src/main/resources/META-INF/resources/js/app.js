@@ -3,6 +3,7 @@ import {configureAccountTools, logout, requireAccount} from './auth.js';
 import {formatMinutes, intervalsOverlap, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
 import {
     cacheCodes,
+    cacheCustomerCode,
     cacheRange,
     cacheVacationRange,
     deleteEntry,
@@ -24,6 +25,7 @@ import {
 import {
     ApiError,
     createCode,
+    saveCode,
     fetchCodes,
     fetchDay,
     fetchRange,
@@ -61,12 +63,31 @@ let formDirty = false;
 let ready = false;
 let busy = false;
 let refreshing = false;
+let lastRefreshAt = 0;
 let syncing = false;
 let onlineStatus = null;
+let codesBusy = false;
+let codesRequestRevision = 0;
 let installPrompt;
 const changes = 'BroadcastChannel' in window ? new BroadcastChannel(`timereport-changes-${currentAccount.accountId}`) : null;
 
 const monthlyReport = configureMonthlyReport({onCache: reloadLocal});
+
+function showView(view) {
+    document.querySelectorAll('[data-view-panel]').forEach(panel => {
+        panel.hidden = panel.dataset.viewPanel !== view;
+    });
+    document.querySelectorAll('.main-navigation [data-view]').forEach(button => {
+        if (button.dataset.view === view) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
+    });
+    if (view === 'report') void monthlyReport.refreshIfOpen();
+    if (view === 'codes') void refreshCodes();
+}
+
+document.querySelectorAll('.main-navigation [data-view]').forEach(button => {
+    button.addEventListener('click', () => showView(button.dataset.view));
+});
 
 function message(id, text) {
     $(id).textContent = text;
@@ -105,7 +126,17 @@ function connectionStatus() {
     $('connection').classList.toggle('offline', offline);
     $('connection').textContent = !navigator.onLine ? 'Utan nät · sparar lokalt'
         : onlineStatus === false ? 'Servern kan inte nås' : onlineStatus ? 'Ansluten' : 'Nät tillgängligt';
-    $('add-code').disabled = !navigator.onLine;
+    $('add-code').disabled = !navigator.onLine || codesBusy;
+    renderCodes();
+    renderSyncSummary();
+}
+
+function renderSyncSummary() {
+    const pending = data.outbox.length + data.vacationOutbox.length;
+    const problem = data.entries.find(entry => entry.syncError);
+    message('sync-summary', problem?.syncError || (pending
+        ? `${pending} ${pending === 1 ? 'ändring sparad' : 'ändringar sparade'} lokalt · ${!navigator.onLine || onlineStatus === false ? 'väntar på anslutning' : 'synkas automatiskt'}.`
+        : ''));
 }
 
 function renderCodes() {
@@ -121,7 +152,71 @@ function renderCodes() {
     list.disabled = !codes.length;
     $('code-help').textContent = 'Lämna tomt eller skriv en ny kod. En ny kod måste bekräftas med sparaknappen, även offline.';
     if (!isNewCustomerCode()) $('save-new-code').hidden = true;
-    $('codes-status').textContent = `${data.codes.length} kundkoder sparade på enheten.`;
+    const activeCodes = data.codes.filter(code => code.active);
+    $('codes-status').textContent = activeCodes.length === 1 ? '1 aktiv kundkod.' : `${activeCodes.length} aktiva kundkoder.`;
+    const catalog = [...data.codes].sort((first, second) => first.code.localeCompare(second.code, 'sv'));
+    for (const [id, active] of [['code-list', true], ['removed-code-list', false]]) {
+        $(id).replaceChildren(...catalog.filter(code => code.active === active).map(code => {
+            const item = element('li', '');
+            item.dataset.code = code.code;
+            const info = element('div', 'code-info');
+            info.append(element('strong', '', code.code), element('span', '', code.version === 0
+                ? 'Väntar på synkning' : active ? 'Aktiv' : 'Borttagen'));
+            const button = element('button', active ? 'text-button remove-code' : 'secondary-button', active ? 'Ta bort' : 'Återställ');
+            button.type = 'button';
+            const pending = active && data.entries.some(entry => !entry.deleted && entry.customerCode === code.code && entry.syncState !== 'synced');
+            button.disabled = codesBusy || !navigator.onLine || code.version === 0 || pending;
+            if (pending || code.version === 0) button.title = 'Vänta tills tider med kundkoden har synkats.';
+            else if (!navigator.onLine) button.title = 'Anslut till nätet för att ändra kundkoder.';
+            button.setAttribute('aria-label', `${active ? 'Ta bort' : 'Återställ'} kundkod ${code.code}`);
+            button.addEventListener('click', () => void setCodeActive(code, !active));
+            item.append(info, button);
+            return item;
+        }));
+    }
+    $('removed-codes').hidden = !catalog.some(code => !code.active);
+}
+
+async function refreshCodes() {
+    if (!navigator.onLine || codesBusy) return;
+    const revision = ++codesRequestRevision;
+    try {
+        const codes = await fetchCodes();
+        if (revision !== codesRequestRevision) return;
+        await cacheCodes(codes);
+        await reloadLocal();
+    } catch (error) {
+        if (revision === codesRequestRevision) message('code-error', error.message || 'Kundkoderna kunde inte hämtas.');
+    }
+}
+
+async function setCodeActive(code, active) {
+    if (codesBusy || !navigator.onLine) return;
+    if (!active && data.entries.some(entry => !entry.deleted && entry.customerCode === code.code && entry.syncState !== 'synced')) {
+        message('code-error', 'Vänta tills tider med kundkoden har synkats innan du tar bort den.');
+        return;
+    }
+    if (!active && !window.confirm(`Ta bort kundkod ”${code.code}”? Tidigare tidsregistreringar och rapporter behåller koden.`)) return;
+    codesBusy = true;
+    ++codesRequestRevision;
+    message('code-error', '');
+    connectionStatus();
+    try {
+        await cacheCustomerCode(await saveCode(code.code, active, code.version));
+        await reloadLocal();
+        changes?.postMessage('changed');
+        message('notice', active ? `Kundkoden ”${code.code}” är återställd.`
+            : `Kundkoden ”${code.code}” är borttagen från valen. Tidigare registreringar finns kvar.`);
+    } catch (error) {
+        if (error.status === 409) {
+            codesBusy = false;
+            await refreshCodes();
+            message('code-error', 'Kundkoden har ändrats på servern. Listan har uppdaterats; försök igen.');
+        } else message('code-error', error.message || 'Kundkoden kunde inte ändras. Försök igen.');
+    } finally {
+        codesBusy = false;
+        connectionStatus();
+    }
 }
 
 function renderWeek() {
@@ -224,6 +319,7 @@ function renderEntries() {
     renderEntryChoices(entries);
     const pending = data.outbox.length + data.vacationOutbox.length;
     renderConflicts();
+    renderSyncSummary();
     $('sync-status').textContent = pending ? `${pending} lokal ${pending === 1 ? 'ändring väntar' : 'ändringar väntar'} på servern.` : 'Alla tider är synkroniserade.';
 }
 
@@ -518,6 +614,7 @@ async function refresh(showFeedback = false) {
         return;
     }
     refreshing = true;
+    lastRefreshAt = Date.now();
     $('refresh').disabled = true;
     const date = viewedDate;
     try {
@@ -767,21 +864,23 @@ $('confirm-delete').addEventListener('click', async () => {
 $('code-form').addEventListener('submit', async event => {
     event.preventDefault();
     message('code-error', '');
+    if (codesBusy || !navigator.onLine) return;
     const code = $('new-code').value.trim();
     if (!code) { message('code-error', 'Ange en kundkod.'); return; }
-    $('add-code').disabled = true;
+    codesBusy = true;
+    ++codesRequestRevision;
+    connectionStatus();
     try {
-        await createCode(code);
-        // If the following read fails, a subsequent refresh retrieves the saved code.
-        await cacheCodes(await fetchCodes());
+        await cacheCustomerCode(await createCode(code));
         await reloadLocal();
         changes?.postMessage('changed');
         $('new-code').value = '';
         onlineStatus = true;
         message('notice', 'Kundkoden är sparad på servern och tillgänglig offline.');
     } catch (error) {
-        message('code-error', `${error.message || 'Kundkoden kunde inte sparas.'} Om anslutningen avbröts, hämta från servern innan du försöker igen.`);
+        message('code-error', error.status === 409 ? 'Kundkoden finns redan. Om den är borttagen kan du återställa den under Borttagna kundkoder.' : error.message || 'Kundkoden kunde inte sparas.');
     } finally {
+        codesBusy = false;
         connectionStatus();
     }
 });
@@ -815,6 +914,13 @@ window.addEventListener('appinstalled', () => { $('install').hidden = true; });
 desktopWeekLayout.addEventListener('change', () => {
     if (ready) renderWeek();
 });
+function refreshOnReturn() {
+    if (!ready || document.hidden || !navigator.onLine || refreshing || Date.now() - lastRefreshAt < 30000) return;
+    void refresh().then(() => monthlyReport.refreshIfOpen());
+}
+
+window.addEventListener('focus', refreshOnReturn);
+document.addEventListener('visibilitychange', refreshOnReturn);
 window.addEventListener('online', () => { onlineStatus = null; connectionStatus(); void syncPending().then(() => refresh()); });
 window.addEventListener('offline', connectionStatus);
 window.addEventListener('beforeunload', event => {

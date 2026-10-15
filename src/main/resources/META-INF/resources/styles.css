@@ -446,3 +446,22 @@ dialog p { font-size: 14px; color: var(--muted); }
         justify-self: start;
     }
 }
+
+.sync-summary { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+.local-tools { margin-top: 20px; }
+.local-tools > summary { color: var(--muted); }
+.local-tools .tool-actions { margin-top: 12px; }
+
+.main-navigation { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 20px; padding-bottom: 8px; }
+.main-navigation button { flex: 1 1 auto; min-width: 0; padding: 10px 8px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 650; }
+.main-navigation button[aria-current="page"] { background: #e4eddb; color: var(--green); }
+.codes-view .code-form { margin-top: 20px; max-width: 460px; }
+@media (max-width: 759px) { .main-navigation button { font-size: 12px; } }
+
+.code-list { list-style: none; padding: 0; margin: 20px 0; }
+.code-list li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.code-list li span { color: var(--muted); font-size: 12px; }
+
+.code-info { display: grid; gap: 4px; min-width: 0; flex: 1 1 120px; }
+.code-list li { align-items: center; }
+.remove-code { color: var(--red); }

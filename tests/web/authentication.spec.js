@@ -118,6 +118,7 @@ test('session expiry never discards queued edits and logout hides local data', a
     await expect(page.locator('#main')).toBeVisible();
     expect((await snapshot(page)).outbox).toHaveLength(1);
     await expect(page.locator('#sync')).toBeEnabled();
+    await page.getByRole('button', { name: 'Konto', exact: true }).click();
     await page.locator('#logout').click();
     await expect(page.locator('#auth-panel')).toBeVisible();
     await expect(page.locator('#main')).toBeHidden();
@@ -261,6 +262,8 @@ test('local autosave precedes delayed sync, later edits postpone upload, and man
     expect(JSON.parse(state.writes[0].body).comment).toBe('Latest revision');
     await expect(page.locator('#sync')).toBeEnabled();
     await page.locator('#comment').fill('Manual upload');
+    await page.getByRole('button', { name: 'Konto', exact: true }).click();
+    if (!await page.locator('#local-tools').evaluate(details => details.open)) await page.getByText('Fler alternativ', { exact: true }).click();
     await page.locator('#sync').click();
     await expect.poll(() => state.writes.length).toBe(2);
     expect(JSON.parse(state.writes[1].body).comment).toBe('Manual upload');
@@ -480,4 +483,51 @@ test('login, reload and week navigation leave every day unselected until explici
         await expect(page.locator('.week-day.selected')).toHaveCount(0);
         await expect(page.locator('#entry-panel')).toBeHidden();
     }
+});
+
+
+test('top navigation defaults to time, keeps the selected week and separates reports, codes and account', async ({ page, context }, testInfo) => {
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await mock(context);
+    await login(page, A, { selectDay: false });
+    const menu = page.getByRole('navigation', { name: 'Huvudmeny' });
+    await expect(menu.getByRole('button', { name: 'Tider', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('#time-view')).toBeVisible();
+    await expect(page.locator('#monthly-report')).toBeHidden();
+    await expect(page.locator('#codes-view')).toBeHidden();
+    await expect(page.locator('#account-view')).toBeHidden();
+    await page.locator('#previous-week').click();
+    await page.locator('.week-day').nth(1).click();
+    const week = await page.locator('#week-label').textContent();
+    await page.locator('#start').fill('08:30');
+    await page.locator('#end').fill('17:45');
+    await expect.poll(async () => (await snapshot(page)).entries.length).toBe(1);
+    await menu.getByRole('button', { name: 'Kundkoder', exact: true }).click();
+    await expect(page.locator('#codes-view')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Kundkoder', exact: true })).toBeVisible();
+    await expect(page.locator('#code-list')).toContainText('FAIR1234');
+    await expect(page.locator('#time-view')).toBeHidden();
+    await expect(page.getByText('Kundkoder och installation', { exact: true })).toHaveCount(0);
+    await menu.getByRole('button', { name: 'Månadsrapport', exact: true }).click();
+    await expect(page.locator('#monthly-report')).toBeVisible();
+    await expect(page.locator('#report-status')).toContainText('Månadens tider har hämtats');
+    await menu.getByRole('button', { name: 'Konto', exact: true }).click();
+    await expect(page.locator('#account-view')).toBeVisible();
+    await expect(page.locator('#local-tools')).not.toHaveAttribute('open', '');
+    await expect(page.locator('#sync')).toBeHidden();
+    await menu.getByRole('button', { name: 'Tider', exact: true }).click();
+    await expect(page.locator('#week-label')).toHaveText(week);
+    await expect(page.locator('#start')).toHaveValue('08:30');
+    await expect(page.locator('#end')).toHaveValue('17:45');
+    for (const width of [320, 390, 1280]) {
+        await page.setViewportSize({ width, height: 960 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.screenshot({ path: testInfo.outputPath(`navigation-${width}.png`), fullPage: true });
+    }
+    await page.reload();
+    await expect(page.locator('#time-view')).toBeVisible();
+    await expect(menu.getByRole('button', { name: 'Tider', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('.week-day.selected')).toHaveCount(0);
+    expect(errors).toHaveLength(0);
 });

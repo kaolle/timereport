@@ -4,7 +4,7 @@ A Java 21 / Quarkus service for personal time reporting, invoicing inputs, and
 customer reporting. Stages 1–3 implement the domain, PostgreSQL persistence, REST
 API, and a mobile-first PWA with offline local storage and queued synchronization.
 The UI includes conflict resolution, account registration, and JWT authentication.
-Reports and Cloud Run deployment remain separate work. Development binds to
+Monthly reports are available; Cloud Run deployment remains separate work. Development binds to
 `127.0.0.1`; packaged production runs bind to `0.0.0.0`.
 
 ## Run locally
@@ -40,6 +40,13 @@ marks before adding account ownership. This reset is intentional for the existin
 test data. Migration cleaning is disabled; add new migrations rather than editing
 applied ones. V4 makes customer codes optional without deleting existing data.
 
+Applied migration files must remain unchanged, including formatting: changing spaces
+or comments can change Flyway checksums. Exclude applied migrations from automatic
+SQL formatting and put schema changes in a new migration. For an existing checksum
+mismatch, verify the installed schema before using Flyway `repair`; repair updates
+migration history and does not apply changed SQL. Keep repair a one-time operation,
+rather than enabling it automatically on startup.
+
 ### Create your first account
 
 Open `http://localhost:8080/`, select registration, and enter an email address.
@@ -53,13 +60,22 @@ origin, including its port. The default is `http://localhost:8080`.
 
 ## Mobile web app, offline storage, and synchronization (stage 4)
 
-The Swedish, mobile-first UI provides a week view with a weekly total. Select a day
-to enter or edit times, customer code, deduction, and comment. Valid form changes
-save to IndexedDB automatically, except that a new customer code requires explicit
-confirmation. A day's first entry suggests 30 minutes of lunch; subsequent entries
-suggest zero. Vacation marks
-are stored in IndexedDB for offline access, included in the local JSON copy, and
-synchronized to PostgreSQL.
+The Swedish, mobile-first UI provides a week view with a weekly total. On desktop,
+all seven days remain on one row with the selected day's form below the whole week.
+After login, page reload, or week navigation, no day is selected and the form stays
+closed until a day is explicitly chosen.
+
+On mobile, the form sits immediately below the selected day. Select a day to enter
+or edit times, customer code, deduction, and comment. Selecting a day or reopening
+its form focuses **Började**. Time fields use direct keyboard entry with no picker:
+enter `08:30` or `0830` and Tab to the next field. Day cards show the first interval
+in chronological order and the net day total; a badge such as **2 tider** marks
+multiple registrations.
+
+Valid form changes save to IndexedDB automatically, except that a new customer code
+requires explicit confirmation. A day's first entry suggests 30 minutes of lunch;
+subsequent entries suggest zero. Vacation marks are stored in IndexedDB for offline
+access, included in the local JSON copy, and synchronized to PostgreSQL.
 
 On first use, connect to the server and log in. Customer code is optional. Use
 **Välj kod…** beside the field to select an existing code, or type a new code.
@@ -133,9 +149,34 @@ these browser tests never write to your PostgreSQL database. The authentication
 suite checks memory-only access tokens, refresh, account-separated offline queues,
 session expiry, logout, and reset links. The offline suite covers autosave, full
 browser restart, pending edits and deletion tombstones, concurrent edits, storage
-rollback, and mobile/desktop layouts. `npm run test:web` runs all browser suites.
+rollback, and mobile/desktop layouts. Report tests cover month boundaries, ISO
+weeks, per-customer totals, pending local changes, incomplete offline data, and
+month-switch races. UX tests verify explicit day selection, focus, direct keyboard
+time entry, and responsive week layout. `npm run test:web` runs all browser suites.
 Screenshots and failure traces are written under `test-results/`. Physical
 iOS/Android testing is still required before production use.
+
+## Monthly reports
+
+Open **Månadsrapport** below the time-entry view and select a month. The report
+lists each ISO week (Monday–Sunday), with worked time per customer code, a weekly
+total, and the month total. Only dates inside the selected month contribute to
+boundary weeks. Times without a code appear under **Utan kundkod**; empty weeks
+show zero. Totals use net worked minutes after lunch/deductions, displayed as hours
+and minutes. Deleted entries and vacation days contribute no worked time.
+
+Opening the report fetches the full month's time entries through the existing
+account-authenticated range API. Local pending edits, additions, and deletions are
+preserved and included in the totals. **Hämta månadens tider** refreshes that month;
+it does not upload pending changes. Report requests are made when the panel opens,
+the month changes, or a refresh is requested, rather than for every autosaved edit.
+The visible totals update when local entries change.
+
+A successfully fetched month is cached per account for offline use. Offline reports
+identify their cached source; a month that has not been fetched warns that totals
+may be incomplete. Cached data can still be older than changes made on another
+device. The IndexedDB upgrade preserves existing entries and queues. No SQL migration
+or CSV export is introduced by this feature.
 
 ## Authentication
 
@@ -367,6 +408,13 @@ must be running). They do not use the local `timereport` database by default. Av
 setting `QUARKUS_DATASOURCE_*` overrides when running tests. Coverage includes
 authentication, refresh rotation/replay, session revocation, account isolation,
 optional/inline customer codes, retries, conflicts, rollback, and database constraints.
+
+Testcontainers uses standard Docker providers; no classes from another application
+are required. If startup reports a missing Docker provider class from an unrelated
+project, inspect `~/.testcontainers.properties` and remove the obsolete
+`docker.client.strategy` entry. This user-wide cache is read by every repository;
+adding the missing application as a dependency would not address the configuration
+problem. See the [Testcontainers configuration documentation](https://java.testcontainers.org/features/configuration/).
 
 Run just the authentication API tests with Docker available:
 

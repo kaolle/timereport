@@ -64,10 +64,23 @@
                 <form id="entry-form">
                     <fieldset id="entry-fields" disabled>
                         <div class="time-fields">
-                            <div class="field"><label for="start">Började</label><input type="time" id="start" name="start" step="60" required></div>
+                            <div class="field"><label for="start">Började</label><input type="text" id="start"
+                                                                                        name="start" inputmode="numeric"
+                                                                                        maxlength="5"
+                                                                                        placeholder="08:00"
+                                                                                        autocomplete="off"
+                                                                                        aria-describedby="time-help"
+                                                                                        required></div>
                             <span class="time-divider" aria-hidden="true">—</span>
-                            <div class="field"><label for="end">Slutade</label><input type="time" id="end" name="end" step="60" required></div>
+                            <div class="field"><label for="end">Slutade</label><input type="text" id="end" name="end"
+                                                                                      inputmode="numeric" maxlength="5"
+                                                                                      placeholder="17:00"
+                                                                                      autocomplete="off"
+                                                                                      aria-describedby="time-help"
+                                                                                      required></div>
                         </div>
+                        <p id="time-help" class="field-help time-help">Skriv timmar och minuter, till exempel 08:30
+                            eller 0830.</p>
                         <div class="field deduction-field">
                             <label for="deduction">Tid att räkna bort <span>minuter</span></label>
                             <div class="deduction-controls"><input id="deduction" name="deduction" type="number" min="0" max="1439" step="1" inputmode="numeric" value="30" required aria-describedby="deduction-help"><div class="presets" aria-label="Förval för avdrag"><button type="button" data-deduction="0">0</button><button type="button" data-deduction="30">30</button><button type="button" data-deduction="60">60</button></div></div>
@@ -93,6 +106,18 @@
                     </fieldset>
                 </form>
         </section>
+        <details id="monthly-report" class="panel monthly-report">
+            <summary>Månadsrapport</summary>
+            <div class="report-controls">
+                <div class="field"><label for="report-month">Månad</label><input id="report-month" type="month"
+                                                                                 required></div>
+                <button id="report-refresh" class="secondary-button" type="button">Hämta månadens tider</button>
+            </div>
+            <div class="report-total-panel"><p class="eyebrow">MÅNADENS ARBETADE TID</p><strong id="report-total">0 h 00
+                min</strong></div>
+            <p id="report-status" class="field-help" role="status"></p>
+            <div id="report-weeks" class="report-weeks"></div>
+        </details>
         <section class="tools panel" aria-labelledby="tools-title">
             <div class="section-heading"><div><p class="eyebrow">REDO FÖR NÄSTA ARBETSDAG</p><h2 id="tools-title">På den här enheten</h2></div></div>
             <p id="offline-readiness" role="status">Förbereder appen för användning utan nät …</p>

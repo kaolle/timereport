@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     formatMinutes,
+    normalizeTime,
     remoteEntry,
     shiftDate,
     validateEntry,
@@ -51,4 +52,15 @@ test('customer codes are optional in local and server records', () => {
         assert.equal(workedMinutes(validateEntry({...entry, customerCode})), 510);
     }
     assert.equal(remoteEntry({...entry, customerCode: null, version: 1}).customerCode, null);
+});
+
+
+test('keyboard time input normalizes hours and compact minutes without accepting invalid times', () => {
+    for (const [input, expected] of [['0830', '08:30'], ['830', '08:30'], ['8:30', '08:30'],
+        ['8:5', '08:05'], ['8', '08:00'], ['00', '00:00'], ['2359', '23:59'], [' 08:30 ', '08:30']]) {
+        assert.equal(normalizeTime(input), expected);
+    }
+    for (const input of ['', '2400', '24:00', '0860', '8:75', 'abc']) {
+        assert.equal(normalizeTime(input), input);
+    }
 });

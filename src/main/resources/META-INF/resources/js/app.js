@@ -1,5 +1,6 @@
+import {configureMonthlyReport} from './report.js';
 import {configureAccountTools, logout, requireAccount} from './auth.js';
-import {formatMinutes, intervalsOverlap, shiftDate, today, validDate, workedMinutes} from './domain.js';
+import {formatMinutes, intervalsOverlap, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
 import {
     cacheCodes,
     cacheRange,
@@ -38,20 +39,22 @@ selectAccount(currentAccount.accountId);
 configureAccountTools(currentAccount);
 const $ = id => document.getElementById(id);
 let data = { entries: [], codes: [], outbox: [], vacationDays: [], vacationOutbox: [] };
-let selectedDate = today();
+let viewedDate = today();
+let selectedDate = null;
 let autosaveTimer;
 let syncTimer;
 let syncNotBefore = 0;
 let proposedCustomerCode;
 let renderedCodes;
 let inputRevision = 0;
-let autoSelectEnabled = true;
-let formOpen = true;
+let autoSelectEnabled = false;
+let formOpen = false;
 let renderedWeekStart;
 let formPlacedDate;
 let lastFormOpen;
 const weekButtons = new Map();
 const entryPanel = $('entry-panel');
+const desktopWeekLayout = window.matchMedia('(min-width: 760px)');
 let editing = null;
 let deleting = null;
 let formDirty = false;
@@ -62,6 +65,8 @@ let syncing = false;
 let onlineStatus = null;
 let installPrompt;
 const changes = 'BroadcastChannel' in window ? new BroadcastChannel(`timereport-changes-${currentAccount.accountId}`) : null;
+
+const monthlyReport = configureMonthlyReport({onCache: reloadLocal});
 
 function message(id, text) {
     $(id).textContent = text;
@@ -78,7 +83,7 @@ function dayEntries() {
         .sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id));
 }
 
-function weekBounds(date = selectedDate) {
+function weekBounds(date = viewedDate) {
     const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
     const start = shiftDate(date, -((weekday + 6) % 7));
     return { start, end: shiftDate(start, 6) };
@@ -122,8 +127,8 @@ function renderCodes() {
 function renderWeek() {
     const { start, end } = weekBounds();
     $('week-label').textContent = `${dateLabel(start, { day: 'numeric', month: 'short' })} – ${dateLabel(end, { day: 'numeric', month: 'short', year: 'numeric' })}`;
-    $('next-week').disabled = weekBounds(shiftDate(selectedDate, 7)).start > weekBounds(today()).start;
-    $('selected-date-label').textContent = dateLabel(selectedDate);
+    $('next-week').disabled = weekBounds(shiftDate(viewedDate, 7)).start > weekBounds(today()).start;
+    $('selected-date-label').textContent = selectedDate ? dateLabel(selectedDate) : '';
     const list = $('week-days');
     if (renderedWeekStart !== start) {
         list.replaceChildren();
@@ -137,7 +142,7 @@ function renderWeek() {
             button.type = 'button';
             button.dataset.date = date;
             button.append(element('span', 'week-day-name'), element('strong', 'week-day-date'),
-                element('span', 'week-day-total'), element('span', 'week-day-count'));
+                element('span', 'week-day-time'), element('span', 'week-day-total'), element('span', 'week-day-count'));
             button.addEventListener('click', () => date === selectedDate ? void toggleForm() : void chooseDate(date));
             slot.append(button);
             const vacation = element('label', 'vacation-toggle');
@@ -159,7 +164,8 @@ function renderWeek() {
     $('week-total').textContent = formatMinutes(weekTotal);
     for (let offset = 0; offset < 7; offset++) {
         const date = shiftDate(start, offset);
-        const entries = data.entries.filter(entry => entry.date === date && !entry.deleted);
+        const entries = data.entries.filter(entry => entry.date === date && !entry.deleted)
+            .sort((first, second) => first.start.localeCompare(second.start) || first.end.localeCompare(second.end));
         const total = entries.reduce((sum, entry) => sum + workedMinutes(entry), 0);
         const button = weekButtons.get(date);
         const vacationButton = button.parentElement.querySelector('.vacation-toggle');
@@ -173,19 +179,31 @@ function renderWeek() {
         button.setAttribute('aria-expanded', String(date === selectedDate && formOpen));
         button.querySelector('.week-day-name').textContent = dateLabel(date, { weekday: 'short' });
         button.querySelector('.week-day-date').textContent = dateLabel(date, { day: 'numeric', month: 'short' });
-        button.querySelector('.week-day-total').textContent = total ? formatMinutes(total) : '—';
-        button.querySelector('.week-day-count').textContent = entries.length ? `${entries.length} tider` : '';
+        const first = entries[0];
+        const time = button.querySelector('.week-day-time');
+        time.textContent = first ? `${first.start}–${first.end}` : '';
+        time.hidden = !first;
+        time.setAttribute('aria-label', first ? `${entries.length > 1 ? 'Första registreringen' : 'Arbetspass'} ${first.start}–${first.end}` : '');
+        button.querySelector('.week-day-total').textContent = entries.length ? formatMinutes(total) : '—';
+        const count = button.querySelector('.week-day-count');
+        count.textContent = entries.length > 1 ? `${entries.length} tider` : '';
+        count.hidden = entries.length < 2;
         vacationCheckbox.checked = isVacation;
         vacationCheckbox.disabled = future;
         vacationCheckbox.setAttribute('aria-label', isVacation ? `Ta bort semestermarkering ${date}` : `Markera ${date} som semester`);
         vacationButton.classList.toggle('marked', isVacation);
     }
     const animateIn = formPlacedDate !== selectedDate || (formOpen && lastFormOpen === false);
-    const selectedSlot = weekButtons.get(selectedDate)?.parentElement;
-    // Moving a focused form in the DOM dismisses mobile keyboards and drops focus.
-    // Only relocate it when the user actually selects another day.
-    if (selectedSlot && entryPanel.previousElementSibling !== selectedSlot) selectedSlot.after(entryPanel);
-    entryPanel.hidden = !formOpen;
+    const anchorDate = desktopWeekLayout.matches || !selectedDate ? end : selectedDate;
+    const anchor = weekButtons.get(anchorDate)?.parentElement;
+    // Desktop keeps the whole week above the form; mobile inserts it below the selected day.
+    // Avoid moving the form on ordinary rerenders so autosave preserves input focus.
+    if (anchor && entryPanel.previousElementSibling !== anchor) {
+        const focused = entryPanel.contains(document.activeElement) ? document.activeElement : null;
+        anchor.after(entryPanel);
+        focused?.focus({preventScroll: true});
+    }
+    entryPanel.hidden = !selectedDate || !formOpen;
     if (formPlacedDate !== selectedDate) {
         formPlacedDate = selectedDate;
     }
@@ -402,6 +420,7 @@ async function syncPending(manual = false) {
 
 async function reloadLocal() {
     data = await snapshot();
+    monthlyReport.render(data);
     renderEntries();
     renderCodes();
     if (editing && !formDirty) {
@@ -420,7 +439,7 @@ async function reloadLocal() {
 }
 
 function selectDefaultEntry() {
-    if (!autoSelectEnabled) return;
+    if (!autoSelectEnabled || !selectedDate || !formOpen) return;
     const entries = dayEntries();
     if (entries.length === 1) {
         autoSelectEnabled = false;
@@ -500,7 +519,7 @@ async function refresh(showFeedback = false) {
     }
     refreshing = true;
     $('refresh').disabled = true;
-    const date = selectedDate;
+    const date = viewedDate;
     try {
         await syncPending();
         const { start, end } = weekBounds(date);
@@ -524,7 +543,7 @@ async function refresh(showFeedback = false) {
         refreshing = false;
         $('refresh').disabled = false;
         connectionStatus();
-        if (date !== selectedDate && navigator.onLine) void refresh();
+        if (date !== viewedDate && navigator.onLine) void refresh();
     }
 }
 
@@ -538,11 +557,30 @@ async function chooseDate(date) {
     }
     clearTimeout(autosaveTimer);
     selectedDate = date;
+    viewedDate = date;
     formOpen = true;
     autoSelectEnabled = true;
     await reloadLocal();
     resetForm();
     selectDefaultEntry();
+    $('start').focus();
+    void refresh();
+}
+
+async function changeWeek(date) {
+    if (!validDate(date) || weekBounds(date).start > weekBounds(today()).start || busy) return;
+    if (formDirty) {
+        clearTimeout(autosaveTimer);
+        await autosave();
+        if (formDirty && !mayDiscard()) return;
+    }
+    clearTimeout(autosaveTimer);
+    viewedDate = date;
+    selectedDate = null;
+    formOpen = false;
+    autoSelectEnabled = false;
+    resetForm();
+    await reloadLocal();
     void refresh();
 }
 
@@ -558,6 +596,7 @@ async function toggleForm() {
     }
     formOpen = !formOpen;
     renderWeek();
+    if (formOpen) $('start').focus();
 }
 
 function isNewCustomerCode() {
@@ -576,7 +615,7 @@ function scheduleAutosave() {
 }
 
 async function autosave(confirmedCode = null) {
-    if (busy || !ready) return;
+    if (busy || !ready || !selectedDate) return;
     const code = $('customer-code').value.trim();
     if (isNewCustomerCode() && confirmedCode !== code) {
         proposedCustomerCode = code;
@@ -621,6 +660,16 @@ async function autosave(confirmedCode = null) {
         $('save-new-code').disabled = false;
         if (formDirty && inputRevision !== revision) scheduleAutosave();
     }
+}
+
+for (const id of ['start', 'end']) {
+    $(id).addEventListener('blur', () => {
+        const normalized = normalizeTime($(id).value);
+        if (normalized !== $(id).value) {
+            $(id).value = normalized;
+            $(id).dispatchEvent(new Event('input', {bubbles: true}));
+        }
+    });
 }
 
 $('customer-codes').addEventListener('change', () => {
@@ -674,12 +723,12 @@ $('delete-current').addEventListener('click', () => {
     deleting = editing;
     $('delete-dialog').showModal();
 });
-$('previous-week').addEventListener('click', () => void chooseDate(shiftDate(selectedDate, -7)));
+$('previous-week').addEventListener('click', () => void changeWeek(shiftDate(viewedDate, -7)));
 $('next-week').addEventListener('click', () => {
-    const next = shiftDate(selectedDate, 7);
-    void chooseDate(next > today() ? today() : next);
+    const next = shiftDate(viewedDate, 7);
+    void changeWeek(next > today() ? today() : next);
 });
-$('today').addEventListener('click', () => void chooseDate(today()));
+$('today').addEventListener('click', () => void changeWeek(today()));
 $('refresh').addEventListener('click', () => void refresh(true));
 $('sync').addEventListener('click', async () => {
     if (formDirty && !busy) {
@@ -763,6 +812,9 @@ $('install').addEventListener('click', async () => {
     $('install').hidden = true;
 });
 window.addEventListener('appinstalled', () => { $('install').hidden = true; });
+desktopWeekLayout.addEventListener('change', () => {
+    if (ready) renderWeek();
+});
 window.addEventListener('online', () => { onlineStatus = null; connectionStatus(); void syncPending().then(() => refresh()); });
 window.addEventListener('offline', connectionStatus);
 window.addEventListener('beforeunload', event => {

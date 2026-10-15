@@ -43,7 +43,22 @@ p { line-height: 1.55; }
 .entry-choice.selected { background: var(--green); color: white; }
 .delete-current { width: 100%; margin-top: 8px; }
 @keyframes selected-day-in { from { opacity: 0; transform: translateY(-9px); } to { opacity: 1; transform: translateY(0); } }
-.week-day { position: relative; overflow: hidden; display: grid; grid-template-columns: 58px 1fr auto; grid-template-rows: auto auto auto; align-items: center; gap: 2px 10px; padding: 10px 13px; min-height: 62px; text-align: left; border: 1px solid var(--line); background: var(--white); color: var(--ink); }
+
+.week-day {
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto;
+    align-items: center;
+    gap: 2px 10px;
+    padding: 10px 13px;
+    min-height: 62px;
+    text-align: left;
+    border: 1px solid var(--line);
+    background: var(--white);
+    color: var(--ink);
+}
 .week-day > span, .week-day > strong { position: relative; z-index: 1; }
 .week-day.vacation { background: #fff9df; border-color: #e4c24d; }
 .week-day.vacation::before { content: ""; position: absolute; z-index: 0; right: 48px; bottom: 7px; width: 34px; aspect-ratio: 1; border: 2px solid #fff; border-radius: 50%; background: conic-gradient(from 20deg, #ef5547 0 22%, #fff 22% 28%, #368fc2 28% 48%, #fff 48% 54%, #f1c83e 54% 74%, #fff 74% 80%, #55a96c 80% 96%, #fff 96%); box-shadow: 0 1px 5px #6c572944; opacity: .86; transform: rotate(-12deg); }
@@ -86,10 +101,49 @@ p { line-height: 1.55; }
 .week-day:disabled.selected { border-color: var(--line); }
 .week-day.selected { border: 2px solid var(--green); background: #edf3e7; }
 .week-day.today .week-day-name::after { content: " · idag"; color: var(--green); font-weight: 700; }
-.week-day-name { grid-row: 1 / 3; text-transform: capitalize; color: var(--muted); font-size: 12px; }
-.week-day-date { text-transform: capitalize; font-size: 13px; }
-.week-day-total { grid-column: 3; grid-row: 1 / 3; font-size: 13px; font-weight: 650; }
-.week-day-count { grid-column: 2; color: var(--muted); font-size: 10px; }
+
+.week-day-name {
+    grid-column: 1;
+    grid-row: 1;
+    text-transform: capitalize;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.week-day-date {
+    grid-column: 1;
+    grid-row: 2;
+    text-transform: capitalize;
+    font-size: 13px;
+}
+
+.week-day-total {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.week-day-count {
+    grid-column: 2;
+    grid-row: 3;
+    justify-self: end;
+    width: fit-content;
+    border-radius: 5px;
+    padding: 2px 5px;
+    background: #e1ead6;
+    color: var(--green);
+    font-size: 10px;
+    font-weight: 650;
+}
+
+.week-day-time {
+    grid-column: 1;
+    grid-row: 3;
+    font-size: 11px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
 .text-button { color: var(--green); background: transparent; padding: 10px 12px; font-weight: 650; }
 .workspace { display: grid; gap: 28px; align-items: start; }
 .panel { background: var(--white); border: 1px solid var(--line); border-radius: 18px; padding: 24px 20px; }
@@ -105,7 +159,11 @@ textarea { resize: vertical; line-height: 1.5; }
 textarea::placeholder, input::placeholder { color: #81897f; }
 .time-fields { display: grid; grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr); align-items: center; gap: 10px; }
 .time-fields input { font-size: 18px; font-weight: 550; height: 59px; padding-inline: 8px; }
-.time-fields input::-webkit-calendar-picker-indicator { margin-left: 0; padding: 0; width: 16px; }
+
+.time-help {
+    margin-top: -12px;
+    margin-bottom: 22px;
+}
 .time-divider { text-align: center; padding-bottom: 2px; color: #8a968b; }
 .field-help { color: var(--muted); font-size: 12px; margin: 8px 0 0; line-height: 1.55; }
 .deduction-controls { display: flex; gap: 12px; }
@@ -207,11 +265,11 @@ dialog p { font-size: 14px; color: var(--muted); }
         grid-template-rows: auto auto auto auto;
         gap: 3px;
         align-items: start;
-        min-height: 126px;
+        min-height: 140px;
         padding: 12px 10px;
     }
 
-    .week-day-name, .week-day-total, .week-day-count {
+    .week-day-name, .week-day-date, .week-day-time, .week-day-total, .week-day-count {
         grid-column: auto;
         grid-row: auto;
     }
@@ -272,4 +330,119 @@ dialog p { font-size: 14px; color: var(--muted); }
     display: grid;
     grid-template-columns: minmax(0, 1fr) 115px;
     gap: 8px;
+}
+
+.monthly-report {
+    margin-bottom: 20px;
+}
+
+.monthly-report > summary {
+    font-size: 21px;
+    font-weight: 650;
+}
+
+.report-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+    margin: 20px 0;
+}
+
+.report-controls .field {
+    margin: 0;
+    flex: 1 1 180px;
+}
+
+.report-controls button {
+    flex: 1 1 180px;
+}
+
+.report-total-panel {
+    padding: 16px;
+    border-radius: 12px;
+    background: var(--ink);
+    color: white;
+}
+
+.report-total-panel .eyebrow {
+    color: #c4d2bb;
+    margin: 0 0 6px;
+}
+
+.report-total-panel strong {
+    font-size: 28px;
+}
+
+.report-weeks {
+    display: grid;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.report-week {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+}
+
+.report-week h3 {
+    margin: 0;
+    font-size: 17px;
+}
+
+.report-week-range {
+    color: var(--muted);
+    margin: 5px 0 12px;
+    font-size: 12px;
+}
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.report-table th, .report-table td {
+    padding: 9px 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+
+.report-table th:first-child, .report-table td:first-child {
+    padding-right: 12px;
+}
+
+.report-table th:last-child, .report-table td:last-child {
+    text-align: right;
+}
+
+.report-table tbody td {
+    border-top: 1px solid var(--line);
+}
+
+.report-table tfoot th, .report-table tfoot td {
+    border-top: 1px solid var(--line);
+    font-weight: 700;
+}
+
+.report-empty {
+    color: var(--muted);
+}
+
+@media (min-width: 760px) {
+    .report-weeks {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.report-table .report-empty {
+    text-align: left;
+}
+
+@media (min-width: 760px) {
+    .week-day-count {
+        justify-self: start;
+    }
 }

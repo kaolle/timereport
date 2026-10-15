@@ -20,6 +20,15 @@ export function timeMinutes(value) {
     return hours * 60 + minutes;
 }
 
+export function normalizeTime(value) {
+    const text = value.trim();
+    let parts = /^(\d{1,2})(\d{2})$/.exec(text);
+    if (!parts) parts = /^(\d{1,2})(?::(\d{1,2}))?$/.exec(text);
+    if (!parts) return text;
+    const normalized = `${parts[1].padStart(2, '0')}:${(parts[2] ?? '00').padStart(2, '0')}`;
+    return Number.isFinite(timeMinutes(normalized)) ? normalized : text;
+}
+
 export function workedMinutes(entry) {
     return timeMinutes(entry.end) - timeMinutes(entry.start) - entry.deductedMinutes;
 }

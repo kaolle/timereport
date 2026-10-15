@@ -16,6 +16,8 @@ class WebAssetsTest {
         given().get("/manifest.json").then().statusCode(200)
                 .body("display", equalTo("standalone"), "start_url", equalTo("/"));
         given().get("/sw.js").then().statusCode(200).body(containsString("timereport-shell-"));
+        given().get("/js/monthly-report.js").then().statusCode(200).body(containsString("buildMonthlyReport"));
+        given().get("/js/report.js").then().statusCode(200).body(containsString("configureMonthlyReport"));
         given().get("/icons/icon-192.png").then().statusCode(200).contentType("image/png");
     }
 }

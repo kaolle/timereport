@@ -43,7 +43,7 @@ async function mock(context) {
     return state;
 }
 
-async function login(page, account = A) {
+async function login(page, account = A, {selectDay = true} = {}) {
     await page.goto('/');
     await expect(page.locator('#auth-panel')).toBeVisible();
     await page.locator('#auth-email').fill(account.email);
@@ -52,6 +52,11 @@ async function login(page, account = A) {
     await expect(page.locator('#main')).toBeVisible();
     await expect(page.locator('#account-email')).toHaveText(account.email);
     await expect(page.locator('#offline-readiness')).toContainText('Redo utan nät');
+    if (selectDay) {
+        await page.locator('.week-day.today').click();
+        await expect(page.locator('#entry-panel')).toBeVisible();
+        await expect(page.locator('#start')).toBeFocused();
+    }
 }
 
 async function seedPending(page, comment = 'Private offline entry') {
@@ -168,7 +173,7 @@ test('time entries autosave without a code and accept new codes offline', async 
     await mock(context);
     await login(page);
     await context.setOffline(true);
-    if (!await page.locator('#entry-panel').isVisible()) await page.locator('.week-day.selected').click();
+    if (!await page.locator('#entry-panel').isVisible()) await page.locator('.week-day.today').click();
     await expect(page.locator('#entry-panel')).toBeVisible();
     await page.locator('#start').fill('08:00');
     await page.locator('#end').fill('17:00');
@@ -186,7 +191,7 @@ test('time entries autosave without a code and accept new codes offline', async 
     expect((await snapshot(page)).codes.some(code => code.code === 'INLINE987')).toBe(true);
     await page.reload();
     expect((await snapshot(page)).entries[0].customerCode).toBe('INLINE987');
-    if (!await page.locator('#entry-panel').isVisible()) await page.locator('.week-day.selected').click();
+    if (!await page.locator('#entry-panel').isVisible()) await page.locator('.week-day.today').click();
     await page.locator('#customer-code').fill('');
     await expect.poll(async () => (await snapshot(page)).entries[0].customerCode).toBeNull();
 });
@@ -320,4 +325,159 @@ test('autosaved new entries can be deleted and keeping a registration leaves it 
     expect((await snapshot(page)).outbox).toHaveLength(0);
     await expect(page.locator('#start')).toHaveValue('');
     await expect(page.locator('#delete-current')).toBeHidden();
+});
+
+
+test('desktop keeps all seven days above the form and resizing preserves mobile placement and focus', async ({
+                                                                                                                 page,
+                                                                                                                 context
+                                                                                                             }, testInfo) => {
+    await mock(context);
+    await page.setViewportSize({width: 1280, height: 960});
+    await login(page);
+    await page.locator('#previous-week').click();
+    await expect(page.locator('#refresh')).toBeEnabled();
+    await page.locator('.week-day').nth(1).click();
+    await expect(page.locator('#entry-panel')).toBeVisible();
+    const desktopLayout = () => page.evaluate(() => {
+        const days = [...document.querySelectorAll('.week-day-slot')].map(day => day.getBoundingClientRect());
+        const form = document.getElementById('entry-panel');
+        return days.length === 7 && days.every(day => Math.abs(day.top - days[0].top) < 1)
+            && form.getBoundingClientRect().top >= Math.max(...days.map(day => day.bottom))
+            && form === document.getElementById('week-days').lastElementChild;
+    });
+    await expect.poll(desktopLayout).toBe(true);
+    await page.screenshot({path: testInfo.outputPath('desktop-week.png'), fullPage: true});
+    await page.locator('#customer-code').fill('DRAFT');
+    await page.locator('#customer-code').evaluate(input => input.setSelectionRange(2, 2));
+    await page.setViewportSize({width: 390, height: 844});
+    await expect.poll(() => page.locator('#entry-panel').evaluate(form =>
+        form.previousElementSibling.dataset.date === document.querySelector('.week-day.selected').dataset.date)).toBe(true);
+    await expect(page.locator('#customer-code')).toBeFocused();
+    await expect(page.locator('#customer-code')).toHaveValue('DRAFT');
+    expect(await page.locator('#customer-code').evaluate(input => input.selectionStart)).toBe(2);
+    await page.setViewportSize({width: 1280, height: 960});
+    await expect.poll(desktopLayout).toBe(true);
+    await expect(page.locator('#customer-code')).toBeFocused();
+    await expect(page.locator('#customer-code')).toHaveValue('DRAFT');
+});
+
+
+test('collapsed day cards show the first interval, net total and a multiple-entry badge', async ({
+                                                                                                     page,
+                                                                                                     context
+                                                                                                 }, testInfo) => {
+    await mock(context);
+    await login(page);
+    await context.setOffline(true);
+    await page.evaluate(async () => {
+        const storage = await import('/js/storage.js');
+        const date = document.querySelector('.week-day.selected').dataset.date;
+        for (const [start, end, deductedMinutes] of [['14:00', '17:00', 0], ['08:00', '12:00', 30]]) {
+            await storage.saveEntry({
+                id: crypto.randomUUID(),
+                date,
+                start,
+                end,
+                deductedMinutes,
+                customerCode: null,
+                comment: ''
+            });
+        }
+        const account = JSON.parse(localStorage.getItem('timereport-account'));
+        const channel = new BroadcastChannel(`timereport-changes-${account.accountId}`);
+        channel.postMessage('changed');
+        channel.close();
+    });
+    const day = page.locator('.week-day.selected');
+    await expect(day.locator('.week-day-time')).toHaveText('08:00–12:00');
+    await expect(day.locator('.week-day-total')).toHaveText('6 h 30 min');
+    await expect(day.locator('.week-day-count')).toHaveText('2 tider');
+    await day.click();
+    await expect(page.locator('#entry-panel')).toBeHidden();
+    for (const width of [320, 390, 1280]) {
+        await page.setViewportSize({width, height: 960});
+        await expect(day.locator('.week-day-time')).toBeVisible();
+        await expect(day.locator('.week-day-count')).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        expect(await day.evaluate(button => [...button.children].filter(node => !node.hidden)
+            .every(node => node.getBoundingClientRect().right <= button.getBoundingClientRect().right))).toBe(true);
+        await page.screenshot({path: testInfo.outputPath(`day-summary-${width}.png`), fullPage: true});
+    }
+    await page.evaluate(async () => {
+        const storage = await import('/js/storage.js');
+        const entry = (await storage.snapshot()).entries.find(entry => entry.start === '08:00');
+        await storage.deleteEntry(entry.id, entry.localRevision);
+        const account = JSON.parse(localStorage.getItem('timereport-account'));
+        const channel = new BroadcastChannel(`timereport-changes-${account.accountId}`);
+        channel.postMessage('changed');
+        channel.close();
+    });
+    await expect(day.locator('.week-day-time')).toHaveText('14:00–17:00');
+    await expect(day.locator('.week-day-count')).toBeHidden();
+    await expect(day.locator('.week-day-total')).toHaveText('3 h 00 min');
+});
+
+test('choosing a day focuses start and keyboard time entry tabs directly to the next field', async ({
+                                                                                                        page,
+                                                                                                        context
+                                                                                                    }) => {
+    await mock(context);
+    await login(page);
+    await context.setOffline(true);
+    await page.locator('.week-day.selected').click();
+    await expect(page.locator('#entry-panel')).toBeHidden();
+    await page.locator('.week-day.selected').click();
+    await expect(page.locator('#start')).toBeFocused();
+    await page.locator('#previous-week').click();
+    await expect(page.locator('#entry-panel')).toBeHidden();
+    await page.locator('.week-day').nth(1).click();
+    await expect(page.locator('#start')).toBeFocused();
+    await page.locator('#start').fill('0830');
+    await page.locator('#start').press('Tab');
+    await expect(page.locator('#start')).toHaveValue('08:30');
+    await expect(page.locator('#end')).toBeFocused();
+    await page.locator('#end').fill('1730');
+    await page.locator('#end').press('Tab');
+    await expect(page.locator('#end')).toHaveValue('17:30');
+    await expect(page.locator('#deduction')).toBeFocused();
+    await expect.poll(async () => (await snapshot(page)).entries[0]?.start).toBe('08:30');
+    expect((await snapshot(page)).entries[0].end).toBe('17:30');
+    await expect(page.locator('#start')).toHaveAttribute('type', 'text');
+    await expect(page.locator('#end')).toHaveAttribute('type', 'text');
+});
+
+
+test('login, reload and week navigation leave every day unselected until explicitly chosen', async ({
+                                                                                                        page,
+                                                                                                        context
+                                                                                                    }) => {
+    await mock(context);
+    await login(page, A, {selectDay: false});
+    await expect(page.locator('.week-day.selected')).toHaveCount(0);
+    await expect(page.locator('#entry-panel')).toBeHidden();
+    await context.setOffline(true);
+    await seedPending(page);
+    await page.reload();
+    await expect(page.locator('#main')).toBeVisible();
+    await expect(page.locator('.week-day.selected')).toHaveCount(0);
+    await expect(page.locator('#entry-panel')).toBeHidden();
+    for (const width of [390, 1280]) {
+        await page.setViewportSize({width, height: 960});
+        await page.locator('#previous-week').click();
+        await expect(page.locator('.week-day.selected')).toHaveCount(0);
+        await expect(page.locator('#entry-panel')).toBeHidden();
+        await page.locator('.week-day').nth(1).click();
+        await expect(page.locator('.week-day.selected')).toHaveCount(1);
+        await expect(page.locator('#entry-panel')).toBeVisible();
+        await expect(page.locator('#start')).toBeFocused();
+        await page.locator('#next-week').click();
+        await expect(page.locator('.week-day.selected')).toHaveCount(0);
+        await expect(page.locator('#entry-panel')).toBeHidden();
+        await page.locator('.week-day.today').click();
+        await expect(page.locator('#entry-panel')).toBeVisible();
+        await page.locator('#today').click();
+        await expect(page.locator('.week-day.selected')).toHaveCount(0);
+        await expect(page.locator('#entry-panel')).toBeHidden();
+    }
 });

@@ -39,6 +39,8 @@ async function open(page) {
     await expect(page.locator('#offline-readiness')).toContainText('Redo utan nät');
     await expect(page.locator('#entry-fields')).toBeEnabled();
     await expect(page.locator('#refresh')).toBeEnabled();
+    await page.locator('.week-day.today').click();
+    await expect(page.locator('#entry-panel')).toBeVisible();
 }
 
 async function save(page, comment = 'Utveckling av kundportal', start = '08:00', end = '17:00') {
@@ -67,6 +69,8 @@ test('mobile flow saves offline, survives reload and reopening, edits and delete
     await save(page);
     await expect(page.locator('#preview')).toHaveText('8 h 30 min');
     await page.reload();
+    await expect(page.locator('#main')).toBeVisible();
+    await page.locator('.week-day.today').click();
     await expect(page.locator('#comment')).toHaveValue('Utveckling av kundportal');
     await page.locator('#deduction').fill('15');
     await expect.poll(async () => (await snapshot(page)).entries[0].deductedMinutes).toBe(15);

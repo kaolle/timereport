@@ -14,9 +14,10 @@ export function openStorage() {
     if (!DB_NAME) throw new Error('Logga in innan lokal lagring öppnas.');
     if (database) return database;
     database = new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 3);
+        const request = indexedDB.open(DB_NAME, 4);
         request.onupgradeneeded = () => {
             const db = request.result;
+            if (!db.objectStoreNames.contains('reportMonths')) db.createObjectStore('reportMonths', {keyPath: 'month'});
             if (!db.objectStoreNames.contains('entries')) db.createObjectStore('entries', { keyPath: 'id' }).createIndex('date', 'date');
             if (!db.objectStoreNames.contains('codes')) db.createObjectStore('codes', { keyPath: 'code' });
             if (!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath: 'id' });
@@ -57,10 +58,10 @@ async function transaction(stores, mode, work) {
 }
 
 export async function snapshot() {
-    return transaction(['entries', 'codes', 'outbox', 'vacations', 'vacationOutbox'], 'readonly', async tx => {
-        const [entries, codes, outbox, vacationDays, vacationOutbox] = await Promise.all(['entries', 'codes', 'outbox', 'vacations', 'vacationOutbox']
+    return transaction(['entries', 'codes', 'outbox', 'vacations', 'vacationOutbox', 'reportMonths'], 'readonly', async tx => {
+        const [entries, codes, outbox, vacationDays, vacationOutbox, reportMonths] = await Promise.all(['entries', 'codes', 'outbox', 'vacations', 'vacationOutbox', 'reportMonths']
             .map(name => requestResult(tx.objectStore(name).getAll())));
-        return { entries, codes, outbox, vacationDays, vacationOutbox };
+        return {entries, codes, outbox, vacationDays, vacationOutbox, reportMonths};
     });
 }
 
@@ -427,13 +428,13 @@ export async function cacheDay(date, remote) {
     });
 }
 
-export async function cacheRange(from, to, remote) {
-    if (!Array.isArray(remote)) throw new Error('Veckans registreringar kunde inte läsas.');
+export async function cacheRange(from, to, remote, cachedMonth = null) {
+    if (!Array.isArray(remote)) throw new Error('Periodens registreringar kunde inte läsas.');
     const records = remote.map(remoteEntry);
     if (records.some(entry => entry.date < from || entry.date > to)) {
-        throw new Error('Servern skickade registreringar utanför den valda veckan.');
+        throw new Error('Servern skickade registreringar utanför den valda perioden.');
     }
-    return transaction(['entries'], 'readwrite', async tx => {
+    return transaction(cachedMonth ? ['entries', 'reportMonths'] : ['entries'], 'readwrite', async tx => {
         const store = tx.objectStore('entries');
         const local = await requestResult(store.getAll());
         const byId = new Map(local.map(entry => [entry.id, entry]));
@@ -444,8 +445,10 @@ export async function cacheRange(from, to, remote) {
         for (const entry of records) {
             const current = byId.get(entry.id);
             if (current && current.syncState !== 'synced') continue;
-            if (current && current.serverVersion > entry.serverVersion) continue;
+            // Reading an unchanged server version must not invalidate an open local edit.
+            if (current && current.serverVersion >= entry.serverVersion) continue;
             store.put({ ...entry, localRevision: current ? current.localRevision + 1 : 0 });
         }
+        if (cachedMonth) tx.objectStore('reportMonths').put({month: cachedMonth, fetchedAt: new Date().toISOString()});
     });
 }

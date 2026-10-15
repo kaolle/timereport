@@ -60,7 +60,7 @@ origin, including its port. The default is `http://localhost:8080`.
 
 ## Mobile web app, offline storage, and synchronization (stage 4)
 
-The top menu separates **Tider**, **Månadsrapport**, **Kundkoder**, and **Konto**.
+The top menu separates **Tider**, **Månadsrapport**, **Kundkoder**, **Konto**, and **Installation**.
 **Tider** is always the default after login or opening/reloading the app.
 Switching views during a session preserves the selected week and any form input.
 
@@ -110,7 +110,7 @@ monthly report; return events are throttled to at most once per 30 seconds.
 
 The main view only shows a compact status when changes are waiting or an error
 needs attention. **Konto → Fler alternativ** contains manual sync/refresh, a local
-JSON copy, and installation information for occasional use. Customer codes have
+JSON copy, and offline readiness for occasional use. Customer codes have
 their own **Kundkoder** menu view. **Synka tider nu**
 saves valid pending form changes and uploads immediately; unconfirmed new codes
 remain unsaved. An in-flight request can finish while new
@@ -121,8 +121,8 @@ revision check protects edits made in another tab. HTTP 409 conflicts preserve b
 versions and require an explicit choice; overlapping entries must be edited before
 retrying. Rejected changes stay local and can be retried after correcting the cause.
 
-Offline readiness and installation information are available under
-**Konto → Fler alternativ**. Wait for **Redo utan nät** before first offline use. The service worker
+Installation instructions are available under **Installation**, which contains only
+information. Offline readiness is available under **Konto → Fler alternativ**. Wait for **Redo utan nät** before first offline use. The service worker
 caches the app shell, not API responses. IndexedDB holds user data. Installation uses
 the browser's install action; on iPhone use Safari's Share → Add to Home Screen.
 Service workers need HTTPS, except for localhost/loopback development. Opening the

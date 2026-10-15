@@ -49,6 +49,7 @@
             <button type="button" data-view="report" aria-controls="monthly-report">Månadsrapport</button>
             <button type="button" data-view="codes" aria-controls="codes-view">Kundkoder</button>
             <button type="button" data-view="account" aria-controls="account-view">Konto</button>
+            <button type="button" data-view="installation" aria-controls="installation-view">Installation</button>
         </nav>
         <p id="sync-summary" class="sync-summary" role="status" hidden></p>
         <div id="notice" class="notice" role="status" hidden></div>
@@ -159,11 +160,14 @@
             </details>
         <details id="local-tools" class="local-tools"><summary>Fler alternativ</summary>
             <p id="offline-readiness" role="status">Förbereder appen för användning utan nät …</p>
-            <div class="tool-actions"><button type="button" id="sync" class="primary-button sync-button">Synka tider nu</button><button type="button" id="refresh" class="secondary-button">Hämta från servern</button><button type="button" id="install" class="secondary-button" hidden>Installera appen</button><button type="button" id="export" class="text-button">Spara en lokal kopia</button></div>
+            <div class="tool-actions"><button type="button" id="sync" class="primary-button sync-button">Synka tider nu</button><button type="button" id="refresh" class="secondary-button">Hämta från servern</button><button type="button" id="export" class="text-button">Spara en lokal kopia</button></div>
             <p id="sync-status" class="sync-status" role="status">Synkar när du är ansluten.</p>
-                <p class="field-help">På iPhone: öppna i Safari, välj Dela och Lägg till på hemskärmen. På Android finns installation i webbläsarens meny. Installation kräver HTTPS, eller localhost på datorn.</p>
 
         </details>
+        </section>
+        <section id="installation-view" class="panel" data-view-panel="installation" aria-labelledby="installation-title" hidden>
+            <h2 id="installation-title">Installation</h2>
+            <p>På iPhone: öppna i Safari, välj Dela och Lägg till på hemskärmen. På Android finns installation i webbläsarens meny. Installation kräver HTTPS, eller localhost på datorn.</p>
         </section>
         <footer><span>Tidrapport</span></footer>
     </main>

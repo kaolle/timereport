@@ -516,6 +516,13 @@ test('top navigation defaults to time, keeps the selected week and separates rep
     await expect(page.locator('#account-view')).toBeVisible();
     await expect(page.locator('#local-tools')).not.toHaveAttribute('open', '');
     await expect(page.locator('#sync')).toBeHidden();
+    await menu.getByRole('button', { name: 'Installation', exact: true }).click();
+    await expect(page.locator('#installation-view')).toBeVisible();
+    await expect(page.locator('#installation-view')).toContainText('På iPhone: öppna i Safari');
+    await expect(page.locator('#installation-view')).toContainText('På Android finns installation i webbläsarens meny.');
+    await expect(page.locator('#installation-view')).toContainText('Installation kräver HTTPS, eller localhost på datorn.');
+    await expect(page.locator('#installation-view').getByRole('button')).toHaveCount(0);
+    await expect(page.locator('#account-view')).toBeHidden();
     await menu.getByRole('button', { name: 'Tider', exact: true }).click();
     await expect(page.locator('#week-label')).toHaveText(week);
     await expect(page.locator('#start')).toHaveValue('08:30');

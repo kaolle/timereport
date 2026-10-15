@@ -68,7 +68,6 @@ let syncing = false;
 let onlineStatus = null;
 let codesBusy = false;
 let codesRequestRevision = 0;
-let installPrompt;
 const changes = 'BroadcastChannel' in window ? new BroadcastChannel(`timereport-changes-${currentAccount.accountId}`) : null;
 
 const monthlyReport = configureMonthlyReport({onCache: reloadLocal});
@@ -899,18 +898,6 @@ $('export').addEventListener('click', async () => {
     }
 });
 
-window.addEventListener('beforeinstallprompt', event => {
-    event.preventDefault();
-    installPrompt = event;
-    $('install').hidden = false;
-});
-$('install').addEventListener('click', async () => {
-    if (!installPrompt) return;
-    await installPrompt.prompt();
-    installPrompt = null;
-    $('install').hidden = true;
-});
-window.addEventListener('appinstalled', () => { $('install').hidden = true; });
 desktopWeekLayout.addEventListener('change', () => {
     if (ready) renderWeek();
 });

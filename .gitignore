@@ -48,3 +48,8 @@ nb-configuration.xml
 node_modules/
 test-results/
 playwright-report/
+
+# Local production credentials and mounted key copies
+.env.production
+.secrets/
+.buildpack-source/

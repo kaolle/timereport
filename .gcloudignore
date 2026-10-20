@@ -1,0 +1,16 @@
+# Only upload build inputs when using gcloud builds submit.
+*
+!.gcloudignore
+!cloudbuild.yaml
+!pom.xml
+!mvnw
+!.mvn/
+!.mvn/**
+!src/
+!src/**
+!package.json
+!package-lock.json
+!playwright.config.js
+!tests/
+!tests/web/
+!tests/web/**

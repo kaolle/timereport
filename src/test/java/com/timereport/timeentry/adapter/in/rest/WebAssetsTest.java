@@ -10,6 +10,13 @@ import static org.hamcrest.Matchers.equalTo;
 @QuarkusTest
 class WebAssetsTest {
     @Test
+    void healthProbesAreAvailableWithoutLoginAndDatabaseIsReady() {
+        for (String probe : new String[]{"started", "live", "ready"}) {
+            given().get("/q/health/" + probe).then().statusCode(200).body("status", equalTo("UP"));
+        }
+    }
+
+    @Test
     void servesTheMobileAppAndOfflineInstallationAssets() {
         given().get("/").then().statusCode(200).contentType("text/html")
                 .body(containsString("lang=\"sv\""), containsString("/js/app.js"), containsString("/manifest.json"));

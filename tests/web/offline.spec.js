@@ -160,6 +160,10 @@ test('validates overlap, zero lunch, daily defaults and comments as plain text',
         const domain = await import('/js/domain.js');
         return domain.shiftDate(domain.today(), -1);
     });
+    // On Mondays yesterday belongs to the previous week.
+    if (await page.locator(`.week-day[data-date="${previous}"]`).count() === 0) {
+        await page.locator('#previous-week').click();
+    }
     await page.locator(`.week-day[data-date="${previous}"]`).click();
     await expect(page.locator('#deduction')).toHaveValue('30');
 });

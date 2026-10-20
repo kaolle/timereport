@@ -4,8 +4,9 @@ A Java 21 / Quarkus service for personal time reporting, invoicing inputs, and
 customer reporting. Stages 1–3 implement the domain, PostgreSQL persistence, REST
 API, and a mobile-first PWA with offline local storage and queued synchronization.
 The UI includes conflict resolution, account registration, and JWT authentication.
-Monthly reports are available; Cloud Run deployment remains separate work. Development binds to
-`127.0.0.1`; packaged production runs bind to `0.0.0.0`.
+Monthly reports are available. [Deploy to Cloud Run via GitHub](CLOUD_RUN.md) using
+Cloud Build and Google Buildpacks, with Neon PostgreSQL and Brevo SMTP. Development
+binds to `127.0.0.1`; production uses `0.0.0.0:8080`.
 
 ## Run locally
 
@@ -262,11 +263,15 @@ external debugging tools.
 
 ## Production configuration and email
 
-Before running the packaged application or deploying to Cloud Run, configure:
+Before running the packaged application or deploying to Cloud Run, configure the
+variables below. Production has no fallback database credentials, public URL or sender.
+See [.env.production.example](.env.production.example) for a placeholder-only reference;
+this file is not loaded automatically and must never contain real credentials.
 
 | Variable                               | Value                                                                                   |
 |----------------------------------------|-----------------------------------------------------------------------------------------|
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | PostgreSQL connection settings                                                          |
+| `DB_POOL_MAX_SIZE`                     | Maximum JDBC connections per instance (default `8`); budget across all instances        |
 | `PUBLIC_URL`                           | Exact public HTTPS origin, such as `https://time.example.com`, without a trailing slash |
 | `JWT_PRIVATE_KEY_PATH`                 | Mounted RSA private key in PKCS#8 PEM format                                            |
 | `JWT_PUBLIC_KEY_PATH`                  | Matching RSA public key in PEM format                                                   |
@@ -275,7 +280,10 @@ Before running the packaged application or deploying to Cloud Run, configure:
 | `MAIL_FROM`                            | Sender address accepted by your mail provider                                           |
 
 Development/test keys are generated automatically; production needs stable keys
-shared by all instances. Generate a pair outside the repository, for example:
+shared by all instances. Startup rejects an invalid HTTPS origin, insecure refresh
+cookies, unreadable/invalid JWT PEM files, mismatched keys and RSA keys below 2048 bits.
+Key paths must be filesystem paths to readable mounted files, not URLs.
+Generate a pair outside the repository, for example:
 
 ```shell
 umask 077
@@ -285,6 +293,35 @@ openssl pkey -in /tmp/timereport-private.pem -pubout -out /tmp/timereport-public
 
 Keep production keys and credentials in Secret Manager and mount/inject them into
 Cloud Run. Never commit them. Production mail uses STARTTLS and is not mocked.
+For Brevo, use `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587`, the SMTP login
+and an SMTP key (not the API key), plus a verified sender for `MAIL_FROM`.
+See [Brevo SMTP configuration](https://help.brevo.com/hc/en-us/articles/7924908994450-Send-transactional-emails-using-Brevo-SMTP).
+
+The production listener uses the default `0.0.0.0:8080`. Set Cloud Run's container
+port to `8080`; no custom `PORT` environment variable is needed. Cloud Run terminates HTTPS and
+forwards HTTP to the container; refresh cookies remain `Secure`, `HttpOnly` and
+`SameSite=Strict`. Serve the UI and API on the same origin and set `PUBLIC_URL` to
+that exact origin. Account links use this configured URL, never the request Host header.
+See [Cloud Run's container contract](https://docs.cloud.google.com/run/docs/container-contract).
+
+Production uses INFO console logging without ANSI colors or file/access logging;
+SMTP debug is disabled. Do not enable protocol/body/header debug logging in production:
+it can expose passwords, tokens or account links. Existing API responses use `no-store`.
+Forwarded headers remain untrusted. Authentication rate limits currently use the direct
+peer IP, so clients behind a shared proxy can share an IP bucket. Before public rollout,
+verify this behavior on Cloud Run and choose a trusted client-IP strategy if needed;
+do not enable arbitrary forwarded-header trust.
+
+Build the JVM artifact with `./mvnw package` and build the existing non-root image with
+`docker build --platform linux/amd64 -f src/main/docker/Dockerfile.jvm -t timereport:prod .`
+(the platform flag also supports building for Cloud Run from an Apple Silicon laptop).
+For GitHub deployment, `cloudbuild.yaml` uses Google Buildpacks instead of a Dockerfile.
+Follow [CLOUD_RUN.md](CLOUD_RUN.md) for the first build, Neon JDBC settings, Secret
+Manager mounts and Cloud Run creation. Secrets are mounted in separate directories
+(`/secrets/jwt-private/private.pem` and `/secrets/jwt-public/public.pem`).
+Health endpoints are `/q/health/started`, `/q/health/live` and `/q/health/ready`;
+readiness also checks the database. Do not use readiness as a liveness probe.
+
 For local testing with real SMTP, explicitly set `QUARKUS_MAILER_MOCK=false` and
 `QUARKUS_MAILER_HOST`, `QUARKUS_MAILER_PORT`, `QUARKUS_MAILER_USERNAME`,
 `QUARKUS_MAILER_PASSWORD`, and `QUARKUS_MAILER_START_TLS=REQUIRED`; the `SMTP_*`

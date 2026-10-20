@@ -1,0 +1,83 @@
+# GitHub push -> isolated tests -> Google Buildpacks -> existing Cloud Run service.
+# First run: set _DEPLOY=false, then create/configure the service (see CLOUD_RUN.md).
+steps:
+  - id: Backend tests
+    name: gcr.io/cloud-builders/docker
+    args:
+      - run
+      - --rm
+      # Testcontainers starts PostgreSQL on the worker's Docker daemon.
+      - --network=host
+      - --volume=/var/run/docker.sock:/var/run/docker.sock
+      - --volume=/workspace:/workspace
+      - --workdir=/workspace
+      - --env=DOCKER_HOST=unix:///var/run/docker.sock
+      - --env=TESTCONTAINERS_HOST_OVERRIDE=localhost
+      - eclipse-temurin:21-jdk
+      - ./mvnw
+      - clean
+      - test
+      - -B
+      - -ntp
+
+  - id: Browser and JavaScript tests
+    # Keep this version aligned with @playwright/test in package-lock.json.
+    name: mcr.microsoft.com/playwright:v1.58.0-noble
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        npm ci --no-audit --no-fund
+        npm run test:unit
+        npm run test:web
+
+  - id: Prepare build source
+    name: ubuntu:24.04
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        mkdir /workspace/.buildpack-source
+        cp -R pom.xml mvnw .mvn src /workspace/.buildpack-source/
+
+  - id: Build and push image
+    name: gcr.io/k8s-skaffold/pack
+    args:
+      - build
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$BUILD_ID
+      - --builder=gcr.io/buildpacks/builder:google-24
+      - --path=/workspace/.buildpack-source
+      - --publish
+      - --env=GOOGLE_RUNTIME_VERSION=21
+      # PostgreSQL tests ran above; Docker is not available inside the buildpack.
+      - --env=GOOGLE_MAVEN_BUILD_ARGS=clean package -DskipTests -B -ntp
+      # Include the complete Quarkus fast-jar directory and its web assets.
+      - --env=GOOGLE_BUILDABLE=target/quarkus-app
+      - --env=GOOGLE_ENTRYPOINT=java -XX:MaxRAMPercentage=70.0 -XX:+ExitOnOutOfMemoryError -jar target/quarkus-app/quarkus-run.jar
+
+  - id: Deploy to Cloud Run
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        case '${_DEPLOY}' in
+          false) echo 'Image built. Configure Cloud Run using CLOUD_RUN.md before enabling deployment.'; exit 0 ;;
+          true) ;;
+          *) echo '_DEPLOY must be true or false'; exit 1 ;;
+        esac
+        # Require an existing service so the first startup has runtime secrets/config.
+        gcloud run services describe '${_SERVICE}' --project '$PROJECT_ID' --region '${_REGION}' --format='value(metadata.name)'
+        gcloud run deploy '${_SERVICE}' \
+          --image '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$BUILD_ID' \
+          --project '$PROJECT_ID' --region '${_REGION}' --platform managed \
+          --port 8080 --quiet
+
+substitutions:
+  _REGION: europe-west3
+  _REPOSITORY: cloud-run-source-deploy
+  _SERVICE: timereport
+  _DEPLOY: 'true'
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1800s

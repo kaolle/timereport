@@ -14,11 +14,13 @@ steps:
       - --env=DOCKER_HOST=unix:///var/run/docker.sock
       - --env=TESTCONTAINERS_HOST_OVERRIDE=localhost
       - eclipse-temurin:21-jdk
-      - ./mvnw
-      - clean
-      - test
-      - -B
-      - -ntp
+      - bash
+      - -ceu
+      - |
+        # The wrapper pins the ZIP checksum; without unzip it downloads tar.gz instead.
+        apt-get update
+        apt-get install -y --no-install-recommends unzip
+        exec ./mvnw clean test -B -ntp
 
   - id: Browser and JavaScript tests
     # Keep this version aligned with @playwright/test in package-lock.json.

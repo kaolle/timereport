@@ -273,16 +273,31 @@ this file is not loaded automatically and must never contain real credentials.
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | PostgreSQL connection settings                                                          |
 | `DB_POOL_MAX_SIZE`                     | Maximum JDBC connections per instance (default `8`); budget across all instances        |
 | `PUBLIC_URL`                           | Exact public HTTPS origin, such as `https://time.example.com`, without a trailing slash |
-| `JWT_PRIVATE_KEY_PATH`                 | Mounted RSA private key in PKCS#8 PEM format                                            |
-| `JWT_PUBLIC_KEY_PATH`                  | Matching RSA public key in PEM format                                                   |
+| `JWT_PRIVATE_KEY`                      | Complete RSA private key in PKCS#8 PEM format, injected from Secret Manager             |
+| `JWT_PUBLIC_KEY`                       | Complete matching RSA public key in X.509 PEM format, injected from Secret Manager      |
 | `SMTP_HOST`, `SMTP_PORT`               | SMTP host and STARTTLS port (default `587`)                                             |
 | `SMTP_USERNAME`, `SMTP_PASSWORD`       | SMTP credentials                                                                        |
 | `MAIL_FROM`                            | Sender address accepted by your mail provider                                           |
 
-Development/test keys are generated automatically; production needs stable keys
-shared by all instances. Startup rejects an invalid HTTPS origin, insecure refresh
-cookies, unreadable/invalid JWT PEM files, mismatched keys and RSA keys below 2048 bits.
-Key paths must be filesystem paths to readable mounted files, not URLs.
+Development/test keys are generated automatically when no keys are configured;
+production needs stable keys shared by all instances. Cloud Run should inject the
+complete PEM values as `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY`. Keep their BEGIN/END
+lines and actual line breaks; do not add quotes or replace line breaks with literal `\n`.
+Pin both secrets to explicit versions when deploying.
+
+For local development with your own PEM files, use the alternative path variables:
+
+```shell
+JWT_PRIVATE_KEY_PATH=/path/to/dev-private.pem \
+JWT_PUBLIC_KEY_PATH=/path/to/dev-public.pem \
+./mvnw quarkus:dev
+```
+
+File paths also work when running the packaged application locally. Set either a
+complete value pair or a complete file-path pair. Production startup rejects missing,
+partial or mixed configuration, unreadable/invalid keys, mismatched pairs and RSA keys
+below 2048 bits, without logging key contents. Paths must be readable filesystem paths,
+not URLs. Startup also rejects invalid HTTPS origins and insecure refresh cookies.
 Generate a pair outside the repository, for example:
 
 ```shell
@@ -291,8 +306,9 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out /tmp/timerepor
 openssl pkey -in /tmp/timereport-private.pem -pubout -out /tmp/timereport-public.pem
 ```
 
-Keep production keys and credentials in Secret Manager and mount/inject them into
-Cloud Run. Never commit them. Production mail uses STARTTLS and is not mocked.
+Keep production keys and credentials in Secret Manager and inject them as secret-backed
+environment variables into Cloud Run. No JWT volume mounts are needed. Never commit
+the values. Production mail uses STARTTLS and is not mocked.
 For Brevo, use `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587`, the SMTP login
 and an SMTP key (not the API key), plus a verified sender for `MAIL_FROM`.
 See [Brevo SMTP configuration](https://help.brevo.com/hc/en-us/articles/7924908994450-Send-transactional-emails-using-Brevo-SMTP).
@@ -317,8 +333,9 @@ Build the JVM artifact with `./mvnw package` and build the existing non-root ima
 (the platform flag also supports building for Cloud Run from an Apple Silicon laptop).
 For GitHub deployment, `cloudbuild.yaml` uses Google Buildpacks instead of a Dockerfile.
 Follow [CLOUD_RUN.md](CLOUD_RUN.md) for the first build, Neon JDBC settings, Secret
-Manager mounts and Cloud Run creation. Secrets are mounted in separate directories
-(`/secrets/jwt-private/private.pem` and `/secrets/jwt-public/public.pem`).
+Manager environment variables and Cloud Run creation. Existing deployments using
+`JWT_PRIVATE_KEY_PATH`/`JWT_PUBLIC_KEY_PATH` secret references should rename those
+references to `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY`; the Secret Manager values stay unchanged.
 Health endpoints are `/q/health/started`, `/q/health/live` and `/q/health/ready`;
 readiness also checks the database. Do not use readiness as a liveness probe.
 

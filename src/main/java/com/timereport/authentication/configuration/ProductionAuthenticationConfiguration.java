@@ -15,6 +15,7 @@ import java.security.interfaces.RSAPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
+import java.util.Optional;
 
 @ApplicationScoped
 @IfBuildProfile("prod")
@@ -23,14 +24,18 @@ public class ProductionAuthenticationConfiguration {
     String publicUrl;
     @ConfigProperty(name = "auth.cookie-secure")
     boolean secure;
+    @ConfigProperty(name = "smallrye.jwt.sign.key")
+    Optional<String> privateKey;
+    @ConfigProperty(name = "mp.jwt.verify.publickey")
+    Optional<String> publicKey;
     @ConfigProperty(name = "smallrye.jwt.sign.key.location")
-    String privateKey;
+    Optional<String> privateKeyPath;
     @ConfigProperty(name = "mp.jwt.verify.publickey.location")
-    String publicKey;
+    Optional<String> publicKeyPath;
 
     void start(@Observes StartupEvent event) {
         validateOrigin(publicUrl, secure);
-        validateKeys(Path.of(privateKey), Path.of(publicKey));
+        validateKeyConfiguration(privateKey, publicKey, privateKeyPath, publicKeyPath);
     }
 
     static void validateOrigin(String publicUrl, boolean secure) {
@@ -50,26 +55,65 @@ public class ProductionAuthenticationConfiguration {
         }
     }
 
+    static void validateKeyConfiguration(Optional<String> privateKey, Optional<String> publicKey,
+                                         Optional<String> privatePath, Optional<String> publicPath) {
+        boolean hasValues = privateKey.isPresent() || publicKey.isPresent();
+        boolean hasPaths = privatePath.isPresent() || publicPath.isPresent();
+        if (hasValues && hasPaths) {
+            throw new IllegalStateException("Configure either JWT_PRIVATE_KEY/JWT_PUBLIC_KEY values or "
+                    + "JWT_PRIVATE_KEY_PATH/JWT_PUBLIC_KEY_PATH files, not both.");
+        }
+        if (hasValues && privateKey.isPresent() && publicKey.isPresent()) {
+            validateKeys(privateKey.get(), publicKey.get());
+        } else if (hasPaths && privatePath.isPresent() && publicPath.isPresent()) {
+            try {
+                validateKeys(Path.of(privatePath.get()), Path.of(publicPath.get()));
+            } catch (java.nio.file.InvalidPathException e) {
+                throw unreadableKeyFiles();
+            }
+        } else {
+            throw new IllegalStateException("Configure both JWT_PRIVATE_KEY and JWT_PUBLIC_KEY as PEM values, "
+                    + "or both JWT_PRIVATE_KEY_PATH and JWT_PUBLIC_KEY_PATH as readable file paths.");
+        }
+    }
+
     static void validateKeys(Path privatePath, Path publicPath) {
+        String privatePem;
+        String publicPem;
+        try {
+            privatePem = Files.readString(privatePath);
+            publicPem = Files.readString(publicPath);
+        } catch (java.io.IOException | SecurityException e) {
+            throw unreadableKeyFiles();
+        }
+        validateKeys(privatePem, publicPem);
+    }
+
+    private static IllegalStateException unreadableKeyFiles() {
+        // Paths can accidentally contain secret values; never include them or the cause.
+        return new IllegalStateException("JWT key files could not be read. JWT_PRIVATE_KEY_PATH and "
+                + "JWT_PUBLIC_KEY_PATH must be readable file paths. For PEM values use JWT_PRIVATE_KEY/JWT_PUBLIC_KEY.");
+    }
+
+    static void validateKeys(String privatePem, String publicPem) {
         try {
             var factory = KeyFactory.getInstance("RSA");
             var privateKey = (RSAPrivateKey) factory.generatePrivate(
-                    new PKCS8EncodedKeySpec(readPem(privatePath, "PRIVATE KEY")));
+                    new PKCS8EncodedKeySpec(decodePem(privatePem, "PRIVATE KEY")));
             var publicKey = (RSAPublicKey) factory.generatePublic(
-                    new X509EncodedKeySpec(readPem(publicPath, "PUBLIC KEY")));
+                    new X509EncodedKeySpec(decodePem(publicPem, "PUBLIC KEY")));
             if (privateKey.getModulus().bitLength() < 2048
                     || !privateKey.getModulus().equals(publicKey.getModulus())) {
                 throw new IllegalArgumentException("Invalid RSA key pair");
             }
         } catch (Exception e) {
-            // Do not include key material or file contents in startup logs.
-            throw new IllegalStateException("JWT key files must contain a matching RSA pair (at least 2048 bits): "
+            // Do not include key material or nested exceptions in startup logs.
+            throw new IllegalStateException("JWT keys must contain a matching RSA pair (at least 2048 bits): "
                     + "PKCS#8 private PEM and X.509 public PEM.");
         }
     }
 
-    private static byte[] readPem(Path path, String label) throws java.io.IOException {
-        String pem = Files.readString(path);
+    private static byte[] decodePem(String pem, String label) {
         String begin = "-----BEGIN " + label + "-----";
         String end = "-----END " + label + "-----";
         if (!pem.strip().startsWith(begin) || !pem.strip().endsWith(end)) {

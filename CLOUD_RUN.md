@@ -117,23 +117,27 @@ Under **Variables & Secrets**, lägg in följande vanliga miljövariabler:
 | `SMTP_PORT`            | `587`                                                                                                                             |
 | `SMTP_USERNAME`        | Login-värdet från Brevo                                                                                                           |
 | `MAIL_FROM`            | `noreply@potatisblomman.se`, verifierad i Brevo                                                                                   |
-| `JWT_PRIVATE_KEY_PATH` | `/secrets/jwt-private/private.pem`                                                                                                |
-| `JWT_PUBLIC_KEY_PATH`  | `/secrets/jwt-public/public.pem`                                                                                                  |
 
-Koppla `DB_PASSWORD` till secret `timereport-db-password` och `SMTP_PASSWORD` till
-`timereport-smtp-password` som **miljövariabler från Secret Manager**.
+Under **Variables & Secrets → Reference a secret**, koppla följande
+**miljövariabler från Secret Manager**:
 
-Montera JWT-secrets som två separata secret-volymer under **Volumes / Volume mounts**:
+| Miljövariabel     | Secret                     |
+|-------------------|----------------------------|
+| `DB_PASSWORD`     | `timereport-db-password`   |
+| `SMTP_PASSWORD`   | `timereport-smtp-password` |
+| `JWT_PRIVATE_KEY` | `timereport-jwt-private`   |
+| `JWT_PUBLIC_KEY`  | `timereport-jwt-public`    |
 
-| Secret                   | Mount path (katalog)   | Filnamn       |
-|--------------------------|------------------------|---------------|
-| `timereport-jwt-private` | `/secrets/jwt-private` | `private.pem` |
-| `timereport-jwt-public`  | `/secrets/jwt-public`  | `public.pem`  |
+Välj ett explicit versionsnummer för varje secret. JWT-värdena ska vara hela PEM-texter
+med BEGIN/END-rader och riktiga radbrytningar, utan extra citattecken eller bokstavliga `\n`.
+Appen kontrollerar vid uppstart att nycklarna är ett matchande RSA-par med minst 2048 bitar.
 
-Använd olika mount-kataloger: Cloud Run tillåter inte två separata secret-volymer
-på samma mount path. Detta ersätter den tidigare exempelplaceringen `/secrets/jwt/`;
-innehållet i dina nyckelfiler ändras inte. Låt runtime-användaren kunna läsa filerna
-(Cloud Runs standardbehörighet `0444` fungerar för den icke-root-användare som kör Java).
+Inga JWT-volymer behövs. Om tjänsten redan använder JWT-secrets med miljövariabelnamnen
+`JWT_PRIVATE_KEY_PATH` och `JWT_PUBLIC_KEY_PATH`, byt namnen till `JWT_PRIVATE_KEY` och
+`JWT_PUBLIC_KEY` när den nya appversionen deployas. Behåll samma secrets och nyckelvärden.
+Ta bort gamla JWT-sökvägsvariabler och eventuella JWT-volymmonteringar när du väljer värden;
+appen avvisar blandad konfiguration. `_PATH`-variablerna finns kvar för lokala PEM-filer,
+se README.
 
 Valfri HTTP-startup probe: port `8080`, path `/q/health/started`, period `10` sekunder,
 timeout `5` sekunder, failure threshold `24`. Använd `/q/health/live` för eventuell

@@ -53,8 +53,8 @@ steps:
       - --env=GOOGLE_RUNTIME_VERSION=21
       # PostgreSQL tests ran above; Docker is not available inside the buildpack.
       - --env=GOOGLE_MAVEN_BUILD_ARGS=clean package -DskipTests -B -ntp
-      # Include the complete Quarkus fast-jar directory and its web assets.
-      - --env=GOOGLE_BUILDABLE=target/quarkus-app
+      # Maven must find pom.xml in the project root, not in its output directory.
+      - --env=GOOGLE_BUILDABLE=.
       - --env=GOOGLE_ENTRYPOINT=java -XX:MaxRAMPercentage=70.0 -XX:+ExitOnOutOfMemoryError -jar target/quarkus-app/quarkus-run.jar
 
   - id: Deploy to Cloud Run

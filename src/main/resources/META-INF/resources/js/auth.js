@@ -103,6 +103,14 @@ export async function requireAccount() {
     const email = document.getElementById('auth-email');
     const password = document.getElementById('auth-password');
     const local = rememberedAccount();
+    let emailVerificationRequired = true;
+    if (navigator.onLine) {
+        try {
+            const response = await fetch('/api/auth/config', {credentials: 'same-origin', cache: 'no-store'});
+            if (response.ok) emailVerificationRequired = (await response.json()).emailVerificationRequired !== false;
+        } catch { /* Keep the safe default when offline or the config endpoint is unavailable. */
+        }
+    }
     let linkToken;
     const fragment = new URLSearchParams(location.hash.slice(1));
     if (fragment.has('reset') || fragment.has('verify')) {
@@ -115,14 +123,15 @@ export async function requireAccount() {
         const tokenMode = ['verify-email', 'reset-password'].includes(mode.value);
         email.closest('.field').hidden = tokenMode;
         email.required = !tokenMode;
-        const needsPassword = !['register', 'forgot-password'].includes(mode.value);
+        const directRegistration = mode.value === 'register' && !emailVerificationRequired;
+        const needsPassword = directRegistration || !['register', 'forgot-password'].includes(mode.value);
         password.closest('.field').hidden = !needsPassword;
         password.required = needsPassword;
-        password.autocomplete = tokenMode ? 'new-password' : 'current-password';
-        password.minLength = tokenMode ? 15 : 0;
+        password.autocomplete = tokenMode || directRegistration ? 'new-password' : 'current-password';
+        password.minLength = tokenMode || directRegistration ? 15 : 0;
         document.querySelector('label[for="auth-password"]').textContent = tokenMode ? 'Välj nytt lösenord' : 'Lösenord';
         document.getElementById('auth-submit').textContent = ({
-            login: 'Logga in', register: 'Skicka registreringslänk',
+            login: 'Logga in', register: directRegistration ? 'Skapa konto' : 'Skicka registreringslänk',
             'forgot-password': 'Skicka återställningslänk', 'reset-password': 'Spara nytt lösenord',
             'verify-email': 'Spara lösenord och aktivera konto'
         })[mode.value];
@@ -166,13 +175,17 @@ export async function requireAccount() {
             try {
                 const body = ['verify-email', 'reset-password'].includes(mode.value)
                     ? {token: linkToken, password: password.value}
-                    : ['register', 'forgot-password'].includes(mode.value) ? {email: email.value}
+                    : mode.value === 'register' && !emailVerificationRequired ? {
+                            email: email.value,
+                            password: password.value
+                        }
+                        : mode.value === 'forgot-password' || mode.value === 'register' ? {email: email.value}
                         : {email: email.value, password: password.value};
                 if (['verify-email', 'reset-password'].includes(mode.value) && !linkToken) {
                     throw new Error('Öppna länken från mejlet för att fortsätta.');
                 }
                 const result = await authRequest(mode.value, body);
-                if (mode.value === 'login') {
+                if (mode.value === 'login' || (mode.value === 'register' && !emailVerificationRequired)) {
                     account = undefined;
                     acceptLogin(result);
                     panel.hidden = true;

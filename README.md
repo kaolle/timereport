@@ -206,11 +206,14 @@ or CSV export is introduced by this feature.
 
 ## Authentication
 
-Registration is email first: request a verification link, open it, choose a password,
-and then log in. Passwords are chosen only after the email link is opened, preventing
-someone from activating an account with a password supplied by another registrant.
-Requesting another verification link invalidates the previous link; registering an
-already activated address does not change its password.
+By default, registration is email first: request a verification link, open it, choose
+a password, and then log in. Passwords are chosen only after the email link is opened,
+preventing someone from activating an account with a password supplied by another
+registrant. For temporary setup only, `AUTH_EMAIL_VERIFICATION_REQUIRED=false` allows
+registration with email and password and logs the new account in directly. This skips
+proof of email ownership and should be turned back on after setup. Requesting another
+verification link invalidates the previous link; registering an already activated
+address does not change its password.
 
 Access tokens are RS256 JWTs valid for **5 minutes**, kept only in JavaScript memory.
 The opaque refresh token is stored in an **HttpOnly, SameSite=Strict** cookie scoped
@@ -226,17 +229,18 @@ All POST authentication requests require `X-Requested-With: timereport`. When an
 rate limited; `429` includes `Retry-After`. Registration and reset requests return
 generic messages to avoid disclosing whether an email is registered.
 
-| Method and path                  | JSON body / behavior                                                           |
-|----------------------------------|--------------------------------------------------------------------------------|
-| `POST /api/auth/register`        | `email`; sends verification link, returns `202`                                |
-| `POST /api/auth/verify-email`    | `token`, chosen `password`; activates account, returns `204`                   |
-| `POST /api/auth/login`           | `email`, `password`; returns access token, expiry, account, and refresh cookie |
-| `POST /api/auth/refresh`         | No body; uses refresh cookie and returns a new token pair                      |
-| `POST /api/auth/logout`          | No body; revokes session and clears cookie                                     |
-| `POST /api/auth/forgot-password` | `email`; requests reset link, returns `202`                                    |
-| `POST /api/auth/reset-password`  | `token`, new `password`; returns `204`                                         |
-| `POST /api/auth/change-password` | `currentPassword`, `newPassword`; requires bearer token                        |
-| `GET /api/auth/me`               | Requires bearer token; returns account ID and email                            |
+| Method and path                  | JSON body / behavior                                                                                                                                                      |
+|----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `POST /api/auth/register`        | Normally `email`, sends verification link, returns `202`; with `AUTH_EMAIL_VERIFICATION_REQUIRED=false`, accepts `email` and `password`, verifies and logs in immediately |
+| `GET /api/auth/config`           | Returns whether email verification is required for registration                                                                                                           |
+| `POST /api/auth/verify-email`    | `token`, chosen `password`; activates account, returns `204`                                                                                                              |
+| `POST /api/auth/login`           | `email`, `password`; returns access token, expiry, account, and refresh cookie                                                                                            |
+| `POST /api/auth/refresh`         | No body; uses refresh cookie and returns a new token pair                                                                                                                 |
+| `POST /api/auth/logout`          | No body; revokes session and clears cookie                                                                                                                                |
+| `POST /api/auth/forgot-password` | `email`; requests reset link, returns `202`                                                                                                                               |
+| `POST /api/auth/reset-password`  | `token`, new `password`; returns `204`                                                                                                                                    |
+| `POST /api/auth/change-password` | `currentPassword`, `newPassword`; requires bearer token                                                                                                                   |
+| `GET /api/auth/me`               | Requires bearer token; returns account ID and email                                                                                                                       |
 
 Verification and reset links are single use and expire after 30 minutes. Their
 secret is passed in a URL fragment and removed from the address bar by the UI.

@@ -30,6 +30,8 @@ public class AuthenticationResource {
     boolean secure;
     @ConfigProperty(name = "auth.ip-limit", defaultValue = "120")
     int ipLimit;
+    @ConfigProperty(name = "auth.email-verification-required", defaultValue = "true")
+    boolean emailVerificationRequired;
 
     public AuthenticationResource(Authentication auth, AccountIdentity identity, AuthRepository repository,
                                   AuthRateLimiter limiter, HttpServerRequest http) {
@@ -56,10 +58,17 @@ public class AuthenticationResource {
 
     @POST
     @Path("/register")
-    public Response register(@NotNull @Valid EmailRequest request) {
+    public Response register(@NotNull @Valid RegistrationRequest request) {
         guard(request.email());
-        auth.register(request.email());
+        auth.register(request.email(), request.password());
+        if (!emailVerificationRequired) return loggedIn(auth.login(request.email(), request.password()));
         return accepted();
+    }
+
+    @GET
+    @Path("/config")
+    public AuthConfigResponse config() {
+        return new AuthConfigResponse(emailVerificationRequired);
     }
 
     @POST

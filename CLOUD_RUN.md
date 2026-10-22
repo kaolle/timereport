@@ -107,16 +107,17 @@ containerporten också är 8080.
 
 Under **Variables & Secrets**, lägg in följande vanliga miljövariabler:
 
-| Variabel               | Värde                                                                                                                             |
-|------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
-| `PUBLIC_URL`           | Tillfälligt `https://setup.invalid`; ersätt i nästa steg                                                                          |
-| `DB_URL`               | `jdbc:postgresql://DIN_DIREKTA_NEON_HOST:5432/timereport?sslmode=verify-full&sslfactory=org.postgresql.ssl.DefaultJavaSSLFactory` |
-| `DB_USERNAME`          | Neon-rollen, exempelvis `timereport-role`                                                                                         |
-| `DB_POOL_MAX_SIZE`     | `4`                                                                                                                               |
-| `SMTP_HOST`            | `smtp-relay.brevo.com`                                                                                                            |
-| `SMTP_PORT`            | `587`                                                                                                                             |
-| `SMTP_USERNAME`        | Login-värdet från Brevo                                                                                                           |
-| `MAIL_FROM`            | `noreply@potatisblomman.se`, verifierad i Brevo                                                                                   |
+| Variabel                           | Värde                                                                                                                             |
+|------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| `PUBLIC_URL`                       | Tillfälligt `https://setup.invalid`; ersätt i nästa steg                                                                          |
+| `DB_URL`                           | `jdbc:postgresql://DIN_DIREKTA_NEON_HOST:5432/timereport?sslmode=verify-full&sslfactory=org.postgresql.ssl.DefaultJavaSSLFactory` |
+| `DB_USERNAME`                      | Neon-rollen, exempelvis `timereport-role`                                                                                         |
+| `DB_POOL_MAX_SIZE`                 | `4`                                                                                                                               |
+| `SMTP_HOST`                        | `smtp-relay.brevo.com`                                                                                                            |
+| `SMTP_PORT`                        | `587`                                                                                                                             |
+| `SMTP_USERNAME`                    | Login-värdet från Brevo                                                                                                           |
+| `MAIL_FROM`                        | `noreply@potatisblomman.se`, verifierad i Brevo                                                                                   |
+| `AUTH_EMAIL_VERIFICATION_REQUIRED` | `true` som standard; sätt tillfälligt `false` för att skapa konto med e-post och lösenord direkt                                  |
 
 Under **Variables & Secrets → Reference a secret**, koppla följande
 **miljövariabler från Secret Manager**:
@@ -148,6 +149,10 @@ Skapa tjänsten. Kopiera dess HTTPS-URL och välj **Edit & deploy new revision**
 välj **Allow public access** i tjänstens säkerhetsinställningar. Webbsidan och
 inloggnings-API:t behöver vara publika; affärs-API:erna kräver fortfarande appens JWT.
 `setup.invalid` används bara för uppstarten: testa inga mejlflöden innan adressen ändrats.
+När `AUTH_EMAIL_VERIFICATION_REQUIRED=false` skapas kontot som verifierat och användaren
+loggas in direkt. E-postadressen används fortfarande som inloggningsnamn. Eftersom ägandet
+av adressen då inte kontrolleras bör läget bara användas tillfälligt; återställ `true` efter
+att du har skapat kontot och deploya en ny revision.
 
 ## 5. Slå på automatisk deployment och verifiera
 

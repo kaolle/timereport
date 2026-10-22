@@ -5,7 +5,7 @@ import com.timereport.authentication.domain.AuthTokens;
 import java.util.UUID;
 
 public interface Authentication {
-    void register(String email);
+    void register(String email, String password);
 
     void verifyEmail(String token, String password);
 

@@ -19,13 +19,16 @@ public class AuthenticationService implements Authentication {
     private final AccountMail mail;
     private final Clock clock;
     private final String dummyHash;
+    private final boolean emailVerificationRequired;
 
-    public AuthenticationService(AuthRepository repository, Passwords passwords, Tokens tokens, AccountMail mail, Clock clock) {
+    public AuthenticationService(AuthRepository repository, Passwords passwords, Tokens tokens, AccountMail mail, Clock clock,
+                                 boolean emailVerificationRequired) {
         this.repository = repository;
         this.passwords = passwords;
         this.tokens = tokens;
         this.mail = mail;
         this.clock = clock;
+        this.emailVerificationRequired = emailVerificationRequired;
         dummyHash = passwords.hash(tokens.random());
     }
 
@@ -43,19 +46,34 @@ public class AuthenticationService implements Authentication {
     }
 
     @Override
-    public void register(String email) {
+    public void register(String email, String password) {
         String normalized = email(email);
-        // Pending accounts have no user-selected password; the random secret is never disclosed.
-        String hash = passwords.hash(tokens.random());
+        String hash;
+        if (emailVerificationRequired) {
+            // Pending accounts have no user-selected password; the random secret is never disclosed.
+            hash = passwords.hash(tokens.random());
+        } else {
+            password(password);
+            hash = passwords.hash(password);
+        }
+        String passwordHash = hash;
         repository.atomic(() -> {
             var existing = repository.account(normalized);
             if (existing.isPresent()) {
-                if (!existing.get().verified()) sendToken(existing.get(), "verify");
+                if (!existing.get().verified()) {
+                    if (emailVerificationRequired) {
+                        sendToken(existing.get(), "verify");
+                    } else {
+                        repository.save(existing.get().toBuilder().passwordHash(passwordHash).verified(true).build());
+                        repository.consumeTokens(existing.get().id(), "verify");
+                    }
+                }
                 return null;
             }
-            var account = Account.builder().id(UUID.randomUUID()).email(normalized).passwordHash(hash).verified(false).build();
+            var account = Account.builder().id(UUID.randomUUID()).email(normalized).passwordHash(passwordHash)
+                    .verified(!emailVerificationRequired).build();
             repository.save(account);
-            sendToken(account, "verify");
+            if (emailVerificationRequired) sendToken(account, "verify");
             return null;
         });
     }

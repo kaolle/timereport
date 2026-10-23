@@ -1,5 +1,6 @@
-const CACHE = 'timereport-shell-v33-direct-registration-option';
-const SHELL = ['/', '/index.html', '/styles.css', '/js/app.js', '/js/domain.js', '/js/storage.js', '/js/api.js', '/js/auth.js', '/js/monthly-report.js', '/js/report.js',
+const VERSION = new URL(self.location.href).searchParams.get('v') || '1';
+const CACHE = `timereport-shell-v${VERSION}`;
+const SHELL = ['/', '/index.html', '/styles.css', '/js/app.js', '/js/domain.js', '/js/storage.js', '/js/api.js', '/js/auth.js', '/js/monthly-report.js', '/js/report.js', '/js/invoicing-settings.js',
     '/manifest.json', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', event => {

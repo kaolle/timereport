@@ -20,6 +20,7 @@ async function jsonRequest(path, options = {}) {
 }
 
 export const fetchCodes = () => jsonRequest('/api/customer-codes');
+export const fetchBillingCodeLabels = () => jsonRequest('/api/invoicing/customer-code-labels');
 export const fetchDay = date => jsonRequest(`/api/time-entries?from=${encodeURIComponent(date)}&to=${encodeURIComponent(date)}`);
 export const fetchRange = (from, to) => jsonRequest(`/api/time-entries?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
 export const fetchVacationDays = (from, to) => jsonRequest(`/api/vacation-days?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);

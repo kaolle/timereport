@@ -14,7 +14,7 @@ export function openStorage() {
     if (!DB_NAME) throw new Error('Logga in innan lokal lagring öppnas.');
     if (database) return database;
     database = new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 4);
+        const request = indexedDB.open(DB_NAME, 5);
         request.onupgradeneeded = () => {
             const db = request.result;
             if (!db.objectStoreNames.contains('reportMonths')) db.createObjectStore('reportMonths', {keyPath: 'month'});
@@ -23,6 +23,7 @@ export function openStorage() {
             if (!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath: 'id' });
             if (!db.objectStoreNames.contains('vacations')) db.createObjectStore('vacations', { keyPath: 'date' });
             if (!db.objectStoreNames.contains('vacationOutbox')) db.createObjectStore('vacationOutbox', { keyPath: 'date' });
+            if (!db.objectStoreNames.contains('billingLabels')) db.createObjectStore('billingLabels', { keyPath: 'code' });
         };
         request.onsuccess = () => {
             const db = request.result;
@@ -58,10 +59,20 @@ async function transaction(stores, mode, work) {
 }
 
 export async function snapshot() {
-    return transaction(['entries', 'codes', 'outbox', 'vacations', 'vacationOutbox', 'reportMonths'], 'readonly', async tx => {
-        const [entries, codes, outbox, vacationDays, vacationOutbox, reportMonths] = await Promise.all(['entries', 'codes', 'outbox', 'vacations', 'vacationOutbox', 'reportMonths']
+    return transaction(['entries', 'codes', 'outbox', 'vacations', 'vacationOutbox', 'reportMonths', 'billingLabels'], 'readonly', async tx => {
+        const [entries, codes, outbox, vacationDays, vacationOutbox, reportMonths, billingLabels] = await Promise.all(['entries', 'codes', 'outbox', 'vacations', 'vacationOutbox', 'reportMonths', 'billingLabels']
             .map(name => requestResult(tx.objectStore(name).getAll())));
-        return {entries, codes, outbox, vacationDays, vacationOutbox, reportMonths};
+        return {entries, codes, outbox, vacationDays, vacationOutbox, reportMonths, billingLabels};
+    });
+}
+
+export async function cacheBillingCodeLabels(labels) {
+    if (!Array.isArray(labels) || labels.some(label => typeof label.code !== 'string'
+            || typeof label.customerShortName !== 'string')) throw new Error('Kundnamnens svar är ogiltigt.');
+    return transaction(['billingLabels'], 'readwrite', async tx => {
+        const store = tx.objectStore('billingLabels');
+        store.clear();
+        for (const label of labels) store.put({code: label.code, customerShortName: label.customerShortName});
     });
 }
 

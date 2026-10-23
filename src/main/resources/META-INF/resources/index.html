@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#183b35">
+    <meta name="application-version" content="37">
     <meta name="description" content="Registrera din arbetstid, även när nätet inte räcker till.">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Tidrapport">
@@ -48,6 +49,7 @@
             <button type="button" data-view="time" aria-controls="time-view" aria-current="page">Tider</button>
             <button type="button" data-view="report" aria-controls="monthly-report">Månadsrapport</button>
             <button type="button" data-view="codes" aria-controls="codes-view">Kundkoder</button>
+            <button type="button" data-view="invoicing" aria-controls="invoicing-view">Fakturering</button>
             <button type="button" data-view="account" aria-controls="account-view">Konto</button>
             <button type="button" data-view="installation" aria-controls="installation-view">Installation</button>
         </nav>
@@ -164,6 +166,80 @@
             <p id="sync-status" class="sync-status" role="status">Synkar när du är ansluten.</p>
 
         </details>
+        </section>
+        <section id="invoicing-view" class="panel invoicing-view" data-view-panel="invoicing" aria-labelledby="invoicing-title" hidden>
+            <h2 id="invoicing-title">Fakturering</h2>
+            <p>Konfigurera dina fakturauppgifter, registrera kunder och koppla kundkoder till faktureringsunderlag. Det här ändrar inte dina tidsregistreringar.</p>
+            <p id="invoicing-status" class="field-help" role="status"></p>
+            <section aria-labelledby="invoice-draft-title">
+                <h3 id="invoice-draft-title">Fakturaunderlag</h3>
+                <p class="field-help">Förhandsvisningen använder synkroniserade tider från servern. Kontrollera att veckans registreringar är synkroniserade innan du hämtar underlaget.</p>
+                <form id="invoice-draft-form" class="billing-form">
+                    <div class="billing-grid">
+                        <div class="field"><label for="invoice-draft-month">Månad</label><input id="invoice-draft-month" type="month" required></div>
+                        <div class="field"><label for="invoice-draft-customer">Fakturera kund</label><select id="invoice-draft-customer" required><option value="">Välj kund…</option></select></div>
+                    </div>
+                    <button id="invoice-draft-load" class="primary-button" type="submit">Visa fakturaunderlag</button>
+                </form>
+                <p id="invoice-draft-status" class="field-help" role="status"></p>
+                <div id="invoice-draft-result" class="invoice-draft-result" aria-live="polite"></div>
+            </section>
+            <section aria-labelledby="seller-profile-title">
+                <h3 id="seller-profile-title">Dina fakturauppgifter</h3>
+                <form id="seller-profile-form" class="billing-form">
+                    <div class="field"><label for="seller-name">Företagsnamn</label><input id="seller-name" name="sellerName" maxlength="160" required></div>
+                    <div class="field"><label for="seller-address">Adress</label><input id="seller-address" name="addressLine" maxlength="200" required></div>
+                    <div class="billing-grid">
+                        <div class="field"><label for="seller-postal">Postnummer</label><input id="seller-postal" name="postalCode" maxlength="40" required></div>
+                        <div class="field"><label for="seller-city">Ort</label><input id="seller-city" name="city" maxlength="100" required></div>
+                    </div>
+                    <div class="billing-grid">
+                        <div class="field"><label for="seller-country">Land</label><input id="seller-country" name="country" value="Sverige" maxlength="80" required></div>
+                        <div class="field"><label for="seller-currency">Valuta</label><input id="seller-currency" name="currencyCode" value="SEK" maxlength="3" pattern="[A-Za-z]{3}" required></div>
+                    </div>
+                    <div class="billing-grid">
+                        <div class="field"><label for="seller-org">Organisationsnummer</label><input id="seller-org" name="organizationNumber" maxlength="40"></div>
+                        <div class="field"><label for="seller-vat">Momsregistreringsnummer</label><input id="seller-vat" name="vatNumber" maxlength="40"></div>
+                    </div>
+                    <div class="billing-grid">
+                        <div class="field"><label for="seller-bankgiro">Bankgiro eller betalningsuppgift</label><input id="seller-bankgiro" name="bankgiro" maxlength="80"></div>
+                        <div class="field"><label for="seller-email">E-post</label><input id="seller-email" name="email" type="email" maxlength="254"></div>
+                    </div>
+                    <div class="billing-grid">
+                        <div class="field"><label for="seller-terms">Standardvillkor (dagar)</label><input id="seller-terms" name="paymentTermsDays" type="number" min="0" max="365" value="30" required></div>
+                        <div class="field"><label for="seller-vat-rate">Standardmoms (%)</label><input id="seller-vat-rate" name="defaultVatPercent" type="number" min="0" max="100" step="0.01" value="25" required></div>
+                    </div>
+                    <label class="billing-checkbox"><input id="seller-f-tax" name="fTaxRegistered" type="checkbox"><span>Godkänd för F-skatt</span></label>
+                    <p id="seller-profile-status" class="field-help" role="status"></p>
+                    <button class="primary-button" type="submit">Spara fakturauppgifter</button>
+                </form>
+            </section>
+            <section aria-labelledby="billing-customers-title">
+                <h3 id="billing-customers-title">Kunder</h3>
+                <ul id="billing-customer-list" class="billing-list"></ul>
+                <details class="billing-add-customer"><summary>Lägg till kund</summary>
+                    <form id="billing-customer-form" class="billing-form">
+                        <div class="field"><label for="billing-customer-number">Kundnummer</label><input id="billing-customer-number" name="customerNumber" maxlength="40" required></div>
+                        <div class="field"><label for="billing-customer-name">Kundens namn</label><input id="billing-customer-name" name="name" maxlength="160" required></div>
+                        <div class="field"><label for="billing-customer-short-name">Kortnamn</label><input id="billing-customer-short-name" name="shortName" maxlength="40" aria-describedby="billing-customer-short-name-help"><p id="billing-customer-short-name-help" class="field-help">Visas tillsammans med kundkoden när du registrerar tid, så att du lättare väljer rätt kund. Exempel: FAIR – Företag AB.</p></div>
+                        <div class="field"><label for="billing-customer-address">Fakturaadress</label><input id="billing-customer-address" name="addressLine" maxlength="200" required></div>
+                        <div class="billing-grid"><div class="field"><label for="billing-customer-postal">Postnummer</label><input id="billing-customer-postal" name="postalCode" maxlength="40" required></div><div class="field"><label for="billing-customer-city">Ort</label><input id="billing-customer-city" name="city" maxlength="100" required></div></div>
+                        <div class="field"><label for="billing-customer-country">Land</label><input id="billing-customer-country" name="country" value="Sverige" maxlength="80" required></div>
+                        <div class="billing-grid"><div class="field"><label for="billing-customer-org">Organisationsnummer</label><input id="billing-customer-org" name="organizationNumber" maxlength="40"></div><div class="field"><label for="billing-customer-vat">Momsregistreringsnummer</label><input id="billing-customer-vat" name="vatNumber" maxlength="40"></div></div>
+                        <div class="field"><label for="billing-customer-email">Faktura-e-post</label><input id="billing-customer-email" name="invoiceEmail" type="email" maxlength="254"></div>
+                        <div class="billing-grid"><div class="field"><label for="billing-customer-ref">Er referens</label><input id="billing-customer-ref" name="customerReference" maxlength="160"></div><div class="field"><label for="billing-our-ref">Vår referens</label><input id="billing-our-ref" name="ourReference" maxlength="160"></div></div>
+                        <div class="field"><label for="billing-customer-terms">Betalningsvillkor (dagar)</label><input id="billing-customer-terms" name="paymentTermsDays" type="number" min="0" max="365" value="30" required></div>
+                        <p id="billing-customer-status" class="field-help" role="status"></p>
+                        <button class="secondary-button" type="submit">Spara kund</button>
+                    </form>
+                </details>
+            </section>
+            <section aria-labelledby="billing-codes-title">
+                <h3 id="billing-codes-title">Koppla kundkoder till kund</h3>
+                <p class="field-help">Kundkod är fortfarande valfri vid tidsregistrering. Endast befintliga koder visas här; okopplade koder lämnas utanför framtida fakturaunderlag.</p>
+                <div id="billing-code-list" class="billing-list"></div>
+            </section>
+            <p id="billing-error" class="error-box" role="alert" hidden></p>
         </section>
         <section id="installation-view" class="panel" data-view-panel="installation" aria-labelledby="installation-title" hidden>
             <h2 id="installation-title">Installation</h2>

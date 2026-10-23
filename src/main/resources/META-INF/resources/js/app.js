@@ -1,8 +1,10 @@
 import {configureMonthlyReport} from './report.js';
+import {configureInvoicingSettings} from './invoicing-settings.js';
 import {configureAccountTools, logout, requireAccount} from './auth.js';
 import {formatMinutes, intervalsOverlap, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
 import {
     cacheCodes,
+    cacheBillingCodeLabels,
     cacheCustomerCode,
     cacheRange,
     cacheVacationRange,
@@ -27,6 +29,7 @@ import {
     createCode,
     saveCode,
     fetchCodes,
+    fetchBillingCodeLabels,
     fetchDay,
     fetchRange,
     fetchTimeEntry,
@@ -40,7 +43,7 @@ const currentAccount = await requireAccount();
 selectAccount(currentAccount.accountId);
 configureAccountTools(currentAccount);
 const $ = id => document.getElementById(id);
-let data = { entries: [], codes: [], outbox: [], vacationDays: [], vacationOutbox: [] };
+let data = { entries: [], codes: [], billingLabels: [], outbox: [], vacationDays: [], vacationOutbox: [] };
 let viewedDate = today();
 let selectedDate = null;
 let autosaveTimer;
@@ -64,6 +67,8 @@ let ready = false;
 let busy = false;
 let refreshing = false;
 let lastRefreshAt = 0;
+let lastBillingLabelsRefreshAt = 0;
+let billingLabelsBusy = false;
 let syncing = false;
 let onlineStatus = null;
 let codesBusy = false;
@@ -71,6 +76,7 @@ let codesRequestRevision = 0;
 const changes = 'BroadcastChannel' in window ? new BroadcastChannel(`timereport-changes-${currentAccount.accountId}`) : null;
 
 const monthlyReport = configureMonthlyReport({onCache: reloadLocal});
+const invoicingSettings = configureInvoicingSettings();
 
 function showView(view) {
     document.querySelectorAll('[data-view-panel]').forEach(panel => {
@@ -82,6 +88,7 @@ function showView(view) {
     });
     if (view === 'report') void monthlyReport.refreshIfOpen();
     if (view === 'codes') void refreshCodes();
+    if (view === 'invoicing') void invoicingSettings.refreshIfOpen();
 }
 
 document.querySelectorAll('.main-navigation [data-view]').forEach(button => {
@@ -142,14 +149,15 @@ function renderCodes() {
     const list = $('customer-codes');
     const codes = data.codes.filter(code => code.active || code.code === editing?.customerCode)
         .sort((a, b) => a.code.localeCompare(b.code, 'sv'));
-    const signature = JSON.stringify(codes.map(code => [code.code, code.active]));
+    const shortNames = new Map((data.billingLabels || []).map(label => [label.code, label.customerShortName]));
+    const signature = JSON.stringify(codes.map(code => [code.code, code.active, shortNames.get(code.code) || '']));
     if (signature !== renderedCodes) {
         list.replaceChildren(new Option('Välj kod…', ''));
-        for (const code of codes) list.add(new Option(`${code.code}${code.active ? '' : ' (inaktiv)'}`, code.code));
+        for (const code of codes) list.add(new Option(`${code.code}${shortNames.has(code.code) ? ` · ${shortNames.get(code.code)}` : ''}${code.active ? '' : ' (inaktiv)'}`, code.code));
         renderedCodes = signature;
     }
     list.disabled = !codes.length;
-    $('code-help').textContent = 'Lämna tomt eller skriv en ny kod. En ny kod måste bekräftas med sparaknappen, även offline.';
+    $('code-help').textContent = 'Kundkod krävs för att tiden ska komma med på fakturaunderlag. Lämna tomt om tiden inte ska faktureras. En ny kod måste bekräftas med sparaknappen, även offline.';
     if (!isNewCustomerCode()) $('save-new-code').hidden = true;
     const activeCodes = data.codes.filter(code => code.active);
     $('codes-status').textContent = activeCodes.length === 1 ? '1 aktiv kundkod.' : `${activeCodes.length} aktiva kundkoder.`;
@@ -187,6 +195,18 @@ async function refreshCodes() {
     } catch (error) {
         if (revision === codesRequestRevision) message('code-error', error.message || 'Kundkoderna kunde inte hämtas.');
     }
+}
+
+async function refreshBillingLabels(force = false) {
+    if (!navigator.onLine || billingLabelsBusy || !force && Date.now() - lastBillingLabelsRefreshAt < 300000) return;
+    billingLabelsBusy = true;
+    try {
+        await cacheBillingCodeLabels(await fetchBillingCodeLabels());
+        lastBillingLabelsRefreshAt = Date.now();
+        await reloadLocal();
+    } catch {
+        // Cached labels remain available when billing settings cannot be reached.
+    } finally { billingLabelsBusy = false; }
 }
 
 async function setCodeActive(code, active) {
@@ -624,6 +644,7 @@ async function refresh(showFeedback = false) {
         if (entries.status === 'fulfilled') await cacheRange(start, end, entries.value);
         if (vacations.status === 'fulfilled') await cacheVacationRange(start, end, vacations.value);
         await reloadLocal();
+        void refreshBillingLabels();
         selectDefaultEntry();
         changes?.postMessage('changed');
         const failed = [codes, entries, vacations].find(result => result.status === 'rejected');
@@ -909,6 +930,7 @@ function refreshOnReturn() {
 window.addEventListener('focus', refreshOnReturn);
 document.addEventListener('visibilitychange', refreshOnReturn);
 window.addEventListener('online', () => { onlineStatus = null; connectionStatus(); void syncPending().then(() => refresh()); });
+window.addEventListener('billing-labels-updated', () => void refreshBillingLabels(true));
 window.addEventListener('offline', connectionStatus);
 window.addEventListener('beforeunload', event => {
     if (formDirty) { event.preventDefault(); event.returnValue = ''; }
@@ -921,10 +943,26 @@ async function prepareOffline() {
         return;
     }
     try {
-        const registration = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+        const version = document.querySelector('meta[name="application-version"]')?.content || '1';
+        const registration = await navigator.serviceWorker.register(`/sw.js?v=${encodeURIComponent(version)}`, { updateViaCache: 'none' });
+        const showWaitingUpdate = () => {
+            if (registration.waiting && navigator.serviceWorker.controller) {
+                $('offline-readiness').textContent = 'Redo utan nät. En uppdatering finns. Stäng alla appflikar och öppna igen när det passar.';
+            }
+        };
+        const watchInstall = () => {
+            const worker = registration.installing;
+            if (!worker) return;
+            worker.addEventListener('statechange', () => {
+                if (worker.state === 'installed') showWaitingUpdate();
+            });
+        };
+        registration.addEventListener('updatefound', watchInstall);
+        watchInstall();
         await navigator.serviceWorker.ready;
         $('offline-readiness').textContent = 'Redo utan nät. Du kan nu stänga och öppna appen offline.';
-        if (registration.waiting) $('offline-readiness').textContent += ' En uppdatering finns. Stäng alla appflikar och öppna igen när det passar.';
+        showWaitingUpdate();
+        void registration.update().catch(() => {});
     } catch {
         $('offline-readiness').textContent = 'Appen är inte klar för offlineöppning. Öppna sidan igen när du har anslutning.';
     }

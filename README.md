@@ -61,7 +61,7 @@ origin, including its port. The default is `http://localhost:8080`.
 
 ## Mobile web app, offline storage, and synchronization (stage 4)
 
-The top menu separates **Tider**, **Månadsrapport**, **Kundkoder**, **Konto**, and **Installation**.
+The top menu separates **Tider**, **Månadsrapport**, **Kundkoder**, **Fakturering**, **Konto**, and **Installation**.
 **Tider** is always the default after login or opening/reloading the app.
 Switching views during a session preserves the selected week and any form input.
 
@@ -204,6 +204,28 @@ may be incomplete. Cached data can still be older than changes made on another
 device. The IndexedDB upgrade preserves existing entries and queues. No SQL migration
 or CSV export is introduced by this feature.
 
+## Faktureringsinställningar (etapp 1)
+
+Choose **Fakturering** in the top menu while online to configure seller details,
+registered customers, and billing data for each existing customer code. A customer
+can own several codes; each code can be assigned a customer, service description,
+hourly rate, and VAT rate. The optional customer short name is shown next to its
+codes in the time-entry selector, which remains usable offline after the labels are
+cached. A customer code is required for a time entry to be included in an invoice
+preview. Existing time entries and codes are left unchanged.
+Unassigned codes remain available for time reporting and are excluded from a selected
+customer's draft.
+
+## Fakturaunderlag (etapp 2)
+
+Choose **Fakturering**, select a month and customer, then choose **Visa fakturaunderlag**.
+The read-only preview lists billable hours and amounts per customer code and ISO week,
+with weekly and monthly totals including net, VAT, and gross. Entries without a code,
+without a billing assignment, or assigned to another customer are listed separately.
+The preview uses entries already synchronized to the server; the page warns if local
+entries for that month remain unsynchronized. No invoice number is assigned and no
+invoice is issued or sent in this stage.
+
 ## Authentication
 
 By default, registration is email first: request a verification link, open it, choose
@@ -254,8 +276,11 @@ Start the service with `./mvnw quarkus:dev` and use `http://localhost:8080/`:
 1. Register an email address; open the verification link printed in the Quarkus console.
 2. Choose a password of 15–128 characters, then log in. An unverified account cannot log in.
 3. Reload the page; the refresh cookie restores the session without persisting an access token.
-4. Use **Glömt lösenord** to request a reset link in the console. Resetting or changing
-   the password requires a new login and invalidates existing sessions.
+4. Use **Glömt lösenord** to request a reset link in the Quarkus console. The local
+   mailer is mocked, and a link is generated only when that email exists in the database
+   used by the running dev process. By default that is `localhost:5432/timereport`, not
+   the Cloud Run/Neon database. Resetting or changing the password requires a new login
+   and invalidates existing sessions.
 5. Log in with a second account to check that times, codes, vacations, and offline queues
    are separate. Offline editing requires a previously used account and cached app shell.
 
@@ -365,6 +390,16 @@ All endpoints below require
 
 | Method and path                                        | Purpose                                                        |
 |--------------------------------------------------------|----------------------------------------------------------------|
+| `GET /api/invoicing/profile`                            | Read seller billing profile; returns `204` when not configured |
+| `PUT /api/invoicing/profile`                            | Create or replace the account's seller billing profile         |
+| `GET /api/invoicing/customers`                          | List billing customers                                         |
+| `POST /api/invoicing/customers`                         | Create a billing customer                                      |
+| `PUT /api/invoicing/customers/{uuid}`                   | Replace a billing customer's details                           |
+| `DELETE /api/invoicing/customers/{uuid}`                | Delete an unassigned billing customer                           |
+| `GET /api/invoicing/customer-codes`                     | List customer codes and their optional billing assignment      |
+| `PUT /api/invoicing/customer-codes/{code}`              | Assign customer, service description, hourly rate, and VAT     |
+| `DELETE /api/invoicing/customer-codes/{code}`           | Remove billing assignment while retaining the customer code    |
+| `GET /api/invoicing/draft?month=2026-10&customerId={uuid}` | Read-only monthly preview for one customer, grouped by ISO week and code |
 | `PUT /api/customer-codes/{code}`                       | Create, activate, or deactivate a customer code                |
 | `GET /api/customer-codes`                              | List codes, including inactive ones                            |
 | `PUT /api/time-entries/{uuid}`                         | Create or replace a time entry                                 |
@@ -433,12 +468,13 @@ new codes by sending them in the PUT body.
 
 ## Architecture
 
-Business capabilities live under `com.timereport.timeentry` and
-`com.timereport.authentication`, each following ports and adapters:
+Business capabilities live under `com.timereport.timeentry`,
+`com.timereport.authentication`, and `com.timereport.invoicing`, each following
+ports and adapters:
 
 - `domain`: immutable models and business rules, without framework dependencies.
-- `application.port.in`: authentication, account identity, time-entry, code, and vacation use cases.
-- `application.port.out`: repositories, atomic transactions, passwords, tokens, and account mail.
+- `application.port.in`: authentication, account identity, time-entry, code, vacation, and billing-settings use cases.
+- `application.port.out`: repositories, transactions, passwords, tokens, and account mail.
 - `application.service`: framework-independent orchestration and version checks.
 - `adapter.in.rest`: JSON DTOs, mapping, request validation, and error responses.
 - `adapter.out`: JDBC persistence/transactions, JWT/PBKDF2 security, and SMTP mail.

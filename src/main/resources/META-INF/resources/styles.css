@@ -456,7 +456,38 @@ dialog p { font-size: 14px; color: var(--muted); }
 .main-navigation button { flex: 1 1 auto; min-width: 0; padding: 10px 8px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 650; }
 .main-navigation button[aria-current="page"] { background: #e4eddb; color: var(--green); }
 .codes-view .code-form { margin-top: 20px; max-width: 460px; }
+.invoicing-view > section { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 16px; }
+.billing-form { display: grid; gap: 12px; max-width: 680px; }
+.billing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.billing-checkbox { display: flex; align-items: center; gap: 9px; width: fit-content; }
+.billing-checkbox input { min-width: 20px; min-height: 20px; }
+.billing-add-customer { margin-top: 16px; }
+.billing-add-customer > summary, .billing-customer-editor summary { cursor: pointer; color: var(--green); font-weight: 650; }
+.billing-list { list-style: none; margin: 16px 0; padding: 0; }
+.billing-list > li { border-bottom: 1px solid var(--line); padding: 12px 0; }
+.billing-customer-editor { margin: 14px 0; }
+.billing-code-card { border-bottom: 1px solid var(--line); padding: 14px 0; }
+.billing-code-card h4 { margin: 0 0 12px; }
+.billing-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.invoice-draft-result { margin-top: 20px; }
+.invoice-draft-summary { background: #f3f6f0; border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.invoice-draft-summary p { margin: 6px 0; }
+.invoice-draft-summary strong { display: block; font-size: 1.25rem; }
+.invoice-draft-week { margin-top: 20px; }
+.invoice-draft-week h4, .invoice-unallocated h4 { margin-bottom: 8px; }
+.invoice-table-scroll { overflow-x: auto; }
+.invoice-draft-table { width: 100%; min-width: 680px; border-collapse: collapse; }
+.invoice-draft-table th, .invoice-draft-table td { padding: 9px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.invoice-draft-table th:first-child, .invoice-draft-table td:first-child { text-align: left; white-space: normal; }
+.invoice-draft-table tfoot { font-weight: 700; }
+.invoice-unallocated { background: #fff8e6; border-radius: 10px; margin-top: 20px; padding: 14px 18px; }
+.invoice-unallocated li { margin: 6px 0; }
 @media (max-width: 759px) { .main-navigation button { font-size: 12px; } }
+
+@media (max-width: 560px) {
+    .billing-grid { grid-template-columns: minmax(0, 1fr); }
+    .billing-actions > button { flex: 1 1 auto; }
+}
 
 .code-list { list-style: none; padding: 0; margin: 20px 0; }
 .code-list li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }

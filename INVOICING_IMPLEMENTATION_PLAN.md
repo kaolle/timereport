@@ -27,14 +27,20 @@ En fullständig svensk faktura behöver bland annat datum, unikt löpnummer, sä
 - Hämta synkroniserade tidsregistreringar vars kundkoder är kopplade till kunden. Sammanställ per vecka och kundkod; skapa en rad per kod när pris eller tjänst skiljer sig.
 - Beräkna timmar från registrerad tid efter avdrag. Semester och andra dagar utan fakturerbar tid ska inte ingå.
 - Tider utan kod, utan faktureringskoppling eller kopplade till en annan kund visas separat och lämnas utanför kundens underlag.
-- Visa en varning när lokala tider i månaden inte hunnit synkroniseras. Utkastet räknar från serverns synkroniserade poster.
-- Den första förhandsvisningen är skrivskyddad. Redigering av rader, PDF och utfärdande hör till kommande etapper.
+- Visa en varning och blockera förhandsgranskning/utfärdande när lokala tider i månaden inte hunnit synkroniseras.
+  Utkastet räknar från serverns synkroniserade poster.
+- Veckosammanställningen är en läsbar referens till tidsunderlaget. Före utfärdande kan användaren justera fakturaradens
+  beskrivning, timmar, timpris och moms utan att ändra tidsregistreringarna.
 
 ### Etapp 3: PDF och utfärdande
 
 - Återskapa mallens en-sideslayout med kontots säljaruppgifter, vald kund, fakturadatum, förfallodatum, referenser, tjänsteperiod, timmar, timpris, netto, moms, avrundning och att betala.
 - Använd decimalexakta belopp och definierade avrundningsregler. Stöd standardmoms men lagra momssats per fakturarad så undantag kan hanteras senare.
 - Tilldela ett unikt löpnummer i en transaktion vid utfärdandet, inte när ett redigerbart utkast skapas. Utfärdade fakturor får inte skrivas över.
+- Visa en PDF-förhandsgranskning märkt UTKAST med preliminärt nummer; kräv en ny förhandsgranskning efter varje ändring
+  innan användaren kan utfärda fakturan.
+- Låt användaren ange nästa fakturanummer innan första utfärdandet, så en befintlig serie kan fortsätta (för Kaolle
+  börjar den på 1061). Löpnumret får bara höjas, aldrig sänkas eller återanvändas.
 - Spara en ögonblicksbild av kund, säljare, rader, belopp, datum och villkor så att framtida ändringar i inställningar eller tidposter inte ändrar fakturan.
 
 ### Etapp 4: historik och PDF-arkiv
@@ -58,7 +64,8 @@ Inför nya Flyway-migreringar; ändra inte redan tillämpade migreringar. Håll 
 ## Acceptanskriterier för första användbara versionen
 
 - En användare kan registrera fakturaprofil, lägga in fakturakunder och koppla flera kundkoder till samma kund.
-- Ett månadsutkast för vald kund visar timmar och belopp per relevant kundkod och stämmer med månadsrapporten.
+- Ett månadsutkast för vald kund visar tidsunderlaget per relevant kundkod, tillåter fakturajusteringar och visar den
+  resulterande PDF:en innan utfärdande.
 - Ofördelade eller osynkroniserade tider kan inte tyst försvinna in i faktureringen.
 - PDF:en innehåller mallens centrala fält, rätt summeringar och fakturanummer; den går att ladda ned.
 - Konton kan bara läsa och utfärda sina egna kunders och fakturors data.

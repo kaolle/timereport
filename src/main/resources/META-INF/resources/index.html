@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#183b35">
-    <meta name="application-version" content="37">
+    <meta name="application-version" content="43">
     <meta name="description" content="Registrera din arbetstid, även när nätet inte räcker till.">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Tidrapport">
@@ -18,7 +18,12 @@
 <body>
     <a class="skip-link" href="#main">Till innehållet</a>
     <header class="site-header">
-        <a class="brand" href="/" aria-label="Tidrapport, startsida"><span class="brand-icon" aria-hidden="true">t.</span>Tidrapport</a>
+        <a class="brand" href="/" aria-label="Tidrapport, startsida"><span class="brand-icon"
+                                                                           aria-hidden="true">t.</span><span>Tidrapport</span><span
+                id="app-version-label" class="app-version-label"></span></a>
+        <button type="button" id="force-reload" class="secondary-button force-reload-button"
+                aria-label="Ladda om appen och hämta senaste version" title="Ladda om appen och hämta senaste version">↻
+        </button>
         <span id="connection" class="connection" role="status">Kontrollerar anslutning</span>
     </header>
     <section id="auth-panel" class="panel auth-panel" aria-labelledby="auth-title">
@@ -173,7 +178,9 @@
             <p id="invoicing-status" class="field-help" role="status"></p>
             <section aria-labelledby="invoice-draft-title">
                 <h3 id="invoice-draft-title">Fakturaunderlag</h3>
-                <p class="field-help">Förhandsvisningen använder synkroniserade tider från servern. Kontrollera att veckans registreringar är synkroniserade innan du hämtar underlaget.</p>
+                <p class="field-help">Utkastet bygger på synkroniserade tider. Granska och justera fakturaraderna innan
+                    du förhandsgranskar PDF:en och utfärdar fakturan. Ändringarna påverkar inte dina
+                    tidsregistreringar.</p>
                 <form id="invoice-draft-form" class="billing-form">
                     <div class="billing-grid">
                         <div class="field"><label for="invoice-draft-month">Månad</label><input id="invoice-draft-month" type="month" required></div>
@@ -202,7 +209,9 @@
                         <div class="field"><label for="seller-vat">Momsregistreringsnummer</label><input id="seller-vat" name="vatNumber" maxlength="40"></div>
                     </div>
                     <div class="billing-grid">
-                        <div class="field"><label for="seller-bankgiro">Bankgiro eller betalningsuppgift</label><input id="seller-bankgiro" name="bankgiro" maxlength="80"></div>
+                        <div class="field"><label for="seller-bankgiro">Bankgiro</label><input id="seller-bankgiro"
+                                                                                               name="bankgiro"
+                                                                                               maxlength="80"></div>
                         <div class="field"><label for="seller-email">E-post</label><input id="seller-email" name="email" type="email" maxlength="254"></div>
                     </div>
                     <div class="billing-grid">
@@ -212,6 +221,18 @@
                     <label class="billing-checkbox"><input id="seller-f-tax" name="fTaxRegistered" type="checkbox"><span>Godkänd för F-skatt</span></label>
                     <p id="seller-profile-status" class="field-help" role="status"></p>
                     <button class="primary-button" type="submit">Spara fakturauppgifter</button>
+                </form>
+            </section>
+            <section aria-labelledby="invoice-numbering-title">
+                <h3 id="invoice-numbering-title">Fakturanummerserie</h3>
+                <form id="invoice-numbering-form" class="billing-form">
+                    <div class="field"><label for="invoice-next-number">Nästa fakturanummer</label><input
+                            id="invoice-next-number" name="nextNumber" type="number" min="1" max="999999999" step="1"
+                            value="1" required aria-describedby="invoice-numbering-help">
+                        <p id="invoice-numbering-help" class="field-help">Ange nästa nummer i din befintliga serie, till
+                            exempel 1061. Numret höjs automatiskt när en faktura utfärdas och kan inte sänkas.</p></div>
+                    <p id="invoice-numbering-status" class="field-help" role="status"></p>
+                    <button class="secondary-button" type="submit">Spara nästa fakturanummer</button>
                 </form>
             </section>
             <section aria-labelledby="billing-customers-title">

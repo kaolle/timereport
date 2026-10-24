@@ -453,6 +453,24 @@ dialog p { font-size: 14px; color: var(--muted); }
 .local-tools .tool-actions { margin-top: 12px; }
 
 .main-navigation { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 20px; padding-bottom: 8px; }
+
+.app-version-label {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    margin-left: 5px;
+    white-space: nowrap;
+}
+
+.force-reload-button {
+    flex: 0 0 36px;
+    width: 36px;
+    min-height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 20px;
+    line-height: 1;
+}
 .main-navigation button { flex: 1 1 auto; min-width: 0; padding: 10px 8px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 650; }
 .main-navigation button[aria-current="page"] { background: #e4eddb; color: var(--green); }
 .codes-view .code-form { margin-top: 20px; max-width: 460px; }
@@ -473,6 +491,71 @@ dialog p { font-size: 14px; color: var(--muted); }
 .invoice-draft-summary { background: #f3f6f0; border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
 .invoice-draft-summary p { margin: 6px 0; }
 .invoice-draft-summary strong { display: block; font-size: 1.25rem; }
+
+.invoice-source-heading {
+    margin: 20px 0 0;
+}
+
+.invoice-adjustment-section {
+    margin-top: 20px;
+}
+
+.invoice-adjustment-section > h4 {
+    margin: 0 0 6px;
+}
+
+.invoice-adjustment-list {
+    display: grid;
+    gap: 12px;
+}
+
+.invoice-adjustment-card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #f7faf8;
+    padding: 14px;
+}
+
+.invoice-adjustment-card > strong {
+    display: block;
+    margin-bottom: 10px;
+    color: var(--green);
+}
+
+.invoice-adjustment-fields {
+    display: grid;
+    grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(110px, 1fr));
+    gap: 10px;
+}
+
+.invoice-draft-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.invoice-pdf-preview {
+    margin-top: 18px;
+}
+
+.invoice-pdf-preview[hidden] {
+    display: none;
+}
+
+.invoice-pdf-preview a {
+    display: inline-block;
+    margin-bottom: 8px;
+}
+
+.invoice-pdf-preview iframe {
+    display: block;
+    width: 100%;
+    min-height: 70vh;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+}
 .invoice-draft-week { margin-top: 20px; }
 .invoice-draft-week h4, .invoice-unallocated h4 { margin-bottom: 8px; }
 .invoice-table-scroll { overflow-x: auto; }
@@ -482,11 +565,21 @@ dialog p { font-size: 14px; color: var(--muted); }
 .invoice-draft-table tfoot { font-weight: 700; }
 .invoice-unallocated { background: #fff8e6; border-radius: 10px; margin-top: 20px; padding: 14px 18px; }
 .invoice-unallocated li { margin: 6px 0; }
+
+.invoice-issue-button {
+    margin-top: 20px;
+}
 @media (max-width: 759px) { .main-navigation button { font-size: 12px; } }
 
 @media (max-width: 560px) {
     .billing-grid { grid-template-columns: minmax(0, 1fr); }
     .billing-actions > button { flex: 1 1 auto; }
+}
+
+@media (max-width: 760px) {
+    .invoice-adjustment-fields {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 .code-list { list-style: none; padding: 0; margin: 20px 0; }

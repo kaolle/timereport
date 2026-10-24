@@ -1,6 +1,7 @@
 package com.timereport.invoicing.adapter.in.rest;
 
 import com.timereport.invoicing.application.port.in.InvoicingSettings;
+import com.timereport.invoicing.application.port.in.InvoiceNumberingSettings;
 import com.timereport.invoicing.domain.BillingCustomer;
 import com.timereport.invoicing.domain.CustomerCodeBilling;
 import com.timereport.invoicing.domain.SellerBillingProfile;
@@ -18,8 +19,24 @@ import java.util.UUID;
 @Produces(MediaType.APPLICATION_JSON)
 public class InvoicingSettingsResource {
     private final InvoicingSettings settings;
+    private final InvoiceNumberingSettings numbering;
 
-    public InvoicingSettingsResource(InvoicingSettings settings) { this.settings = settings; }
+    public InvoicingSettingsResource(InvoicingSettings settings, InvoiceNumberingSettings numbering) {
+        this.settings = settings;
+        this.numbering = numbering;
+    }
+
+    @GET
+    @Path("/invoice-numbering")
+    public InvoiceNumberingResponse invoiceNumbering() {
+        return InvoiceNumberingResponse.from(numbering.get());
+    }
+
+    @PUT
+    @Path("/invoice-numbering")
+    public InvoiceNumberingResponse saveInvoiceNumbering(@NotNull @Valid InvoiceNumberingRequest request) {
+        return InvoiceNumberingResponse.from(numbering.set(request.nextNumber()));
+    }
 
     @GET
     @Path("/profile")

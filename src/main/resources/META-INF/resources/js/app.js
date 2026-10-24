@@ -39,6 +39,18 @@ import {
     uploadTimeEntry
 } from './api.js';
 
+const applicationVersion = document.querySelector('meta[name="application-version"]')?.content;
+const versionLabel = document.getElementById('app-version-label');
+if (versionLabel && applicationVersion) versionLabel.textContent = `(v ${applicationVersion})`;
+document.getElementById('force-reload')?.addEventListener('click', () => {
+    if (!navigator.onLine) {
+        const readiness = document.getElementById('offline-readiness');
+        if (readiness) readiness.textContent = 'Anslut till nätet innan du hämtar en ny appversion.';
+        else window.alert('Anslut till nätet innan du hämtar en ny appversion.');
+        return;
+    }
+    window.location.assign('/force-update.html');
+});
 const currentAccount = await requireAccount();
 selectAccount(currentAccount.accountId);
 configureAccountTools(currentAccount);
@@ -938,6 +950,7 @@ window.addEventListener('beforeunload', event => {
 changes?.addEventListener('message', () => { if (ready) reloadLocal().catch(() => message('fatal', 'Lagringen kunde inte läsas. Ladda om sidan.')); });
 
 async function prepareOffline() {
+    const reloadButton = $('force-reload');
     if (!window.isSecureContext || !('serviceWorker' in navigator)) {
         $('offline-readiness').textContent = 'Offlineöppning kräver HTTPS eller localhost och stöd för service workers.';
         return;
@@ -947,7 +960,10 @@ async function prepareOffline() {
         const registration = await navigator.serviceWorker.register(`/sw.js?v=${encodeURIComponent(version)}`, { updateViaCache: 'none' });
         const showWaitingUpdate = () => {
             if (registration.waiting && navigator.serviceWorker.controller) {
-                $('offline-readiness').textContent = 'Redo utan nät. En uppdatering finns. Stäng alla appflikar och öppna igen när det passar.';
+                reloadButton.textContent = '↻';
+                reloadButton.setAttribute('aria-label', `Uppdatera appen till version ${version}`);
+                reloadButton.title = `Uppdatera appen till version ${version}`;
+                $('offline-readiness').textContent = 'En ny appversion är redo. Dina sparade tidsregistreringar lämnas kvar.';
             }
         };
         const watchInstall = () => {

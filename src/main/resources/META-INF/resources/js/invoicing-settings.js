@@ -8,6 +8,8 @@ let customers = [];
 let codeSettings = [];
 let defaultVat = '25';
 let currencyCode = 'SEK';
+let previewUrl = null;
+let previewReadySignature = null;
 
 async function request(path, method = 'GET', body) {
     const response = await authenticatedFetch(path, {
@@ -47,14 +49,134 @@ function setDraftCustomers() {
     }
 }
 
-function renderDraft(draft) {
+function monthlyInvoiceLines(draft) {
+    const grouped = new Map();
+    for (const week of draft.weeks) for (const line of week.lines) {
+        const current = grouped.get(line.customerCode);
+        if (!current) grouped.set(line.customerCode, {...line});
+        else current.workedMinutes += line.workedMinutes;
+    }
+    return [...grouped.values()];
+}
+
+function invoicePayload(draft) {
+    const adjustments = [...$('invoice-adjustment-list').querySelectorAll('[data-invoice-code]')].map(card => {
+        const value = name => card.querySelector(`[name="${name}"]`);
+        const hours = value('hours');
+        if (!hours.checkValidity() || !value('description').checkValidity()
+            || !value('rate').checkValidity() || !value('vat').checkValidity()) {
+            throw new Error('Kontrollera fakturaradernas beskrivning, timmar, timpris och moms.');
+        }
+        const workedMinutes = Math.round(Number(hours.value) * 60);
+        if (!Number.isFinite(workedMinutes) || workedMinutes > 10_000_000) throw new Error('Antalet timmar är för stort.');
+        return {
+            customerCode: card.dataset.invoiceCode,
+            description: value('description').value.trim(),
+            workedMinutes,
+            hourlyRate: Number(value('rate').value),
+            vatPercent: Number(value('vat').value)
+        };
+    });
+    return {month: draft.month, customerId: draft.customerId, adjustments};
+}
+
+function invalidatePreview() {
+    previewReadySignature = null;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    const frame = $('invoice-pdf-frame');
+    if (frame) frame.src = 'about:blank';
+    const preview = $('invoice-pdf-preview');
+    if (preview) preview.hidden = true;
+    const issue = $('invoice-issue-button');
+    if (issue) issue.disabled = true;
+    status('invoice-draft-status', 'Utkastet har ändrats. Skapa en ny PDF-förhandsvisning innan fakturan kan utfärdas.');
+}
+
+function renderDraft(draft, pendingCount = 0) {
+    previewReadySignature = null;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
     const result = $('invoice-draft-result');
     result.replaceChildren();
+    const invoiceLines = monthlyInvoiceLines(draft);
     const summary = node('div', 'invoice-draft-summary');
     summary.append(node('p', 'eyebrow', `UTKAST · ${draft.customerName} · ${draft.month}`),
-        node('strong', '', `${formatMinutes(draft.workedMinutes)} · ${money(draft.totalAmount)} inkl. moms`),
-        node('p', '', `Netto ${money(draft.netAmount)} · moms ${money(draft.vatAmount)}`));
+        node('strong', '', `${formatMinutes(draft.workedMinutes)} synkroniserad tid i underlaget`),
+        node('p', '', 'Fakturans slutliga timmar och belopp räknas om efter dina ändringar och visas i PDF-förhandsvisningen.'),
+        node('p', 'field-help', 'Veckosammanställningen nedan är tidsunderlaget före fakturaändringar.'));
     result.append(summary);
+    const editor = node('section', 'invoice-adjustment-section');
+    editor.append(node('h4', '', 'Fakturarader · redigera utkastet'));
+    editor.append(node('p', 'field-help', 'Ändra beskrivning, timmar, timpris eller moms. Noll timmar tar bort raden från utkastet. Utkastet sparas inte på servern; ändringarna påverkar inte tidsregistreringarna.'));
+    const editorList = node('div', 'invoice-adjustment-list');
+    editorList.id = 'invoice-adjustment-list';
+    let rowNumber = 0;
+    for (const line of invoiceLines) {
+        const card = node('div', 'invoice-adjustment-card');
+        card.dataset.invoiceCode = line.customerCode;
+        card.append(node('strong', '', line.customerCode));
+        const fields = node('div', 'invoice-adjustment-fields');
+        const addField = (name, labelText, value, type = 'text', step = undefined) => {
+            const wrapper = node('div', 'field');
+            const input = document.createElement('input');
+            input.id = `invoice-adjustment-${rowNumber}-${name}`;
+            input.name = name;
+            input.type = type;
+            input.value = value;
+            input.required = true;
+            if (name === 'description') input.maxLength = 240;
+            if (type === 'number') {
+                input.min = '0';
+                input.step = step || '0.01';
+                input.max = name === 'hours' ? '166666.6666' : name === 'rate' ? '1000000' : '100';
+            }
+            const label = node('label', '', labelText);
+            label.htmlFor = input.id;
+            wrapper.append(label, input);
+            fields.append(wrapper);
+        };
+        addField('description', 'Beskrivning', line.description);
+        addField('hours', 'Timmar', (line.workedMinutes / 60).toFixed(4), 'number', '0.0001');
+        addField('rate', 'Timpris', String(line.hourlyRate), 'number', '0.01');
+        addField('vat', 'Moms (%)', String(line.vatPercent), 'number', '0.01');
+        card.append(fields);
+        editorList.append(card);
+        rowNumber++;
+    }
+    editor.append(editorList);
+    result.append(editor);
+    const controls = node('div', 'invoice-draft-controls');
+    if (invoiceLines.length > 0) {
+        const previewButton = node('button', 'secondary-button', 'Förhandsgranska faktura som PDF');
+        previewButton.type = 'button';
+        previewButton.disabled = pendingCount > 0;
+        previewButton.addEventListener('click', () => void previewDraft(draft, previewButton));
+        controls.append(previewButton);
+        const issue = node('button', 'primary-button invoice-issue-button', 'Godkänn och utfärda fakturan');
+        issue.id = 'invoice-issue-button';
+        issue.type = 'button';
+        issue.disabled = true;
+        issue.addEventListener('click', () => void issueDraft(draft, issue));
+        controls.append(issue);
+    } else {
+        controls.append(node('p', 'field-help', 'Det finns inga fakturarader för vald kund och månad. Kontrollera kundkodernas kopplingar.'));
+    }
+    result.append(controls);
+    const preview = node('section', 'invoice-pdf-preview');
+    preview.id = 'invoice-pdf-preview';
+    preview.hidden = true;
+    const open = node('a', 'text-button', 'Öppna PDF i ny flik');
+    open.id = 'invoice-pdf-open';
+    open.target = '_blank';
+    open.rel = 'noopener';
+    const frame = document.createElement('iframe');
+    frame.id = 'invoice-pdf-frame';
+    frame.title = 'Förhandsvisning av fakturautkast';
+    preview.append(open, frame);
+    result.append(preview);
+    for (const input of editorList.querySelectorAll('input')) input.addEventListener('input', invalidatePreview);
+    result.append(node('h4', 'invoice-source-heading', 'Tidsunderlag per vecka'));
     for (const week of draft.weeks) {
         const section = node('section', 'invoice-draft-week');
         section.append(node('h4', '', `Vecka ${week.weekNumber} (${week.weekYear})`));
@@ -97,6 +219,112 @@ function renderDraft(draft) {
     }
 }
 
+async function previewDraft(draft, button) {
+    if (await pendingLocalCount(draft.month)) {
+        status('invoice-draft-status', 'Synka månadens lokala registreringar och hämta underlaget igen innan du förhandsgranskar fakturan.');
+        button.disabled = true;
+        return;
+    }
+    let payload;
+    try {
+        payload = invoicePayload(draft);
+    } catch (error) {
+        status('invoice-draft-status', error.message);
+        return;
+    }
+    button.disabled = true;
+    status('invoice-draft-status', 'Skapar PDF-förhandsvisning av utkastet …');
+    try {
+        const response = await authenticatedFetch('/api/invoicing/draft/pdf', {
+            method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(30000),
+            headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            let body;
+            try {
+                body = await response.json();
+            } catch {
+                body = null;
+            }
+            throw new Error(body?.message || `Förhandsvisningen misslyckades (${response.status}).`);
+        }
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        previewUrl = URL.createObjectURL(await response.blob());
+        $('invoice-pdf-frame').src = previewUrl;
+        $('invoice-pdf-open').href = previewUrl;
+        $('invoice-pdf-preview').hidden = false;
+        if (JSON.stringify(invoicePayload(draft)) !== JSON.stringify(payload)) {
+            invalidatePreview();
+            throw new Error('Utkastet ändrades medan PDF-förhandsvisningen skapades. Förhandsgranska igen.');
+        }
+        previewReadySignature = JSON.stringify(payload);
+        const issue = $('invoice-issue-button');
+        if (issue) issue.disabled = false;
+        status('invoice-draft-status', 'Granska PDF-förhandsvisningen. Utkastet får inget permanent fakturanummer förrän du utfärdar det.');
+    } catch (error) {
+        status('invoice-draft-status', error.message || 'Förhandsvisningen kunde inte skapas.');
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function issueDraft(draft, button) {
+    if (await pendingLocalCount(draft.month)) {
+        status('invoice-draft-status', 'Synka alla lokala registreringar för månaden och hämta ett nytt underlag innan du utfärdar fakturan.');
+        button.disabled = true;
+        return;
+    }
+    let payload;
+    try {
+        payload = invoicePayload(draft);
+    } catch (error) {
+        status('invoice-draft-status', error.message);
+        return;
+    }
+    if (previewReadySignature !== JSON.stringify(payload)) {
+        status('invoice-draft-status', 'Förhandsgranska den aktuella versionen av fakturan innan du utfärdar den.');
+        button.disabled = true;
+        return;
+    }
+    const summary = `${draft.customerName}, ${draft.month}`;
+    if (!window.confirm(`Utfärda fakturan för ${summary}? Detta tilldelar ett permanent fakturanummer och låser fakturans innehåll.`)) return;
+    button.disabled = true;
+    status('invoice-draft-status', 'Utfärdar fakturan och skapar PDF …');
+    try {
+        const response = await authenticatedFetch('/api/invoicing/invoices', {
+            method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(30000),
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            let body;
+            try {
+                body = await response.json();
+            } catch {
+                body = null;
+            }
+            throw new Error(body?.message || `Fakturan kunde inte utfärdas (${response.status}).`);
+        }
+        const pdf = await response.blob();
+        const url = URL.createObjectURL(pdf);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Faktura-${response.headers.get('X-Invoice-Number') || 'utkast'}.pdf`;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        const number = response.headers.get('X-Invoice-Number');
+        status('invoice-draft-status', `Faktura ${number} är utfärdad och PDF-filen har laddats ned. Fakturan kan hämtas igen via API:t om nedladdningen misslyckades.`);
+        button.remove();
+        const numbering = await request('/api/invoicing/invoice-numbering');
+        $('invoice-next-number').value = numbering.nextNumber;
+    } catch (error) {
+        status('invoice-draft-status', error.message || 'Fakturan kunde inte utfärdas.');
+        button.disabled = false;
+    }
+}
+
 async function loadDraft(event) {
     event?.preventDefault();
     if (!navigator.onLine) { status('invoice-draft-status', 'Anslut till nätet för att hämta fakturaunderlaget.'); return; }
@@ -109,18 +337,23 @@ async function loadDraft(event) {
     try {
         const query = new URLSearchParams({month, customerId});
         const draft = await request(`/api/invoicing/draft?${query}`);
-        renderDraft(draft);
-        let pendingCount = 0;
-        try {
-            const local = await snapshot();
-            pendingCount = local.entries.filter(entry => !entry.deleted && entry.date.startsWith(`${month}-`)
-                && entry.syncState !== 'synced').length;
-        } catch { /* Server preview remains available if local browser storage cannot be read. */ }
+        const pendingCount = await pendingLocalCount(month);
+        renderDraft(draft, pendingCount);
         const warning = pendingCount ? ` ${pendingCount} lokal(a) registrering(ar) i månaden är inte synkroniserad(e) och ingår inte.` : '';
-        status('invoice-draft-status', `Förhandsvisningen är hämtad från servern. Inget fakturanummer har tilldelats och ingen faktura har skickats.${warning}`);
+        status('invoice-draft-status', `Tidsunderlaget är hämtat från servern. Förhandsgranska den justerade PDF:en innan du utfärdar fakturan.${warning}`);
     } catch (error) {
         status('invoice-draft-status', error.message || 'Fakturaunderlaget kunde inte hämtas.');
     } finally { button.disabled = false; }
+}
+
+async function pendingLocalCount(month) {
+    try {
+        const local = await snapshot();
+        return local.entries.filter(entry => !entry.deleted && entry.date.startsWith(`${month}-`)
+            && entry.syncState !== 'synced').length;
+    } catch {
+        return 0;
+    }
 }
 
 function formValues(form) {
@@ -320,11 +553,13 @@ async function loadSettings() {
     busy = true;
     status('invoicing-status', 'Hämtar inställningar …');
     try {
-        const [profile, loadedCustomers, loadedCodes] = await Promise.all([
-            request('/api/invoicing/profile'), request('/api/invoicing/customers'), request('/api/invoicing/customer-codes')
+        const [profile, loadedCustomers, loadedCodes, numbering] = await Promise.all([
+            request('/api/invoicing/profile'), request('/api/invoicing/customers'), request('/api/invoicing/customer-codes'),
+            request('/api/invoicing/invoice-numbering')
         ]);
         setProfile(profile);
         customers = loadedCustomers;
+        $('invoice-next-number').value = numbering.nextNumber;
         setDraftCustomers();
         codeSettings = loadedCodes;
         renderCustomers();
@@ -340,6 +575,25 @@ export function configureInvoicingSettings() {
     const now = new Date();
     $('invoice-draft-month').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     $('invoice-draft-form').addEventListener('submit', loadDraft);
+    $('invoice-numbering-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!navigator.onLine) {
+            status('invoice-numbering-status', 'Anslut till nätet för att spara.');
+            return;
+        }
+        const form = event.currentTarget;
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        try {
+            const result = await request('/api/invoicing/invoice-numbering', 'PUT', {nextNumber: Number($('invoice-next-number').value)});
+            $('invoice-next-number').value = result.nextNumber;
+            status('invoice-numbering-status', `Nästa faktura får nummer ${result.nextNumber}.`);
+        } catch (error) {
+            status('invoice-numbering-status', error.message);
+        } finally {
+            button.disabled = false;
+        }
+    });
     $('seller-profile-form').addEventListener('submit', async event => {
         event.preventDefault();
         if (!navigator.onLine) { status('seller-profile-status', 'Anslut till nätet för att spara.'); return; }

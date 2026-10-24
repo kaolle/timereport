@@ -77,9 +77,13 @@ public class InvoiceDraftService implements InvoiceDrafts {
                     .weekYear(weekStart.get(WeekFields.ISO.weekBasedYear())).from(rangeFrom).to(rangeTo).lines(lines)
                     .workedMinutes(minutes).netAmount(net).vatAmount(vat).totalAmount(net.add(vat)).build());
         }
-        long minutes = weeks.stream().mapToLong(InvoiceDraft.Week::workedMinutes).sum();
-        BigDecimal net = sum(weeks, InvoiceDraft.Week::netAmount);
-        BigDecimal vat = sum(weeks, InvoiceDraft.Week::vatAmount);
+        Map<String, Long> minutesByCode = new HashMap<>();
+        weeks.forEach(week -> week.lines().forEach(line -> minutesByCode.merge(line.customerCode(), line.workedMinutes(), Long::sum)));
+        List<InvoiceDraft.Line> monthlyLines = minutesByCode.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                .map(row -> line(row.getKey(), row.getValue(), codeSettings.get(row.getKey()))).toList();
+        long minutes = monthlyLines.stream().mapToLong(InvoiceDraft.Line::workedMinutes).sum();
+        BigDecimal net = sum(monthlyLines, InvoiceDraft.Line::netAmount);
+        BigDecimal vat = sum(monthlyLines, InvoiceDraft.Line::vatAmount);
         return InvoiceDraft.builder().month(month).customerId(customerId).customerName(customer.name()).from(from).to(to)
                 .weeks(weeks).unallocated(unallocated).workedMinutes(minutes).netAmount(net).vatAmount(vat)
                 .totalAmount(net.add(vat)).build();

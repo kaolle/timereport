@@ -124,11 +124,18 @@ retrying. Rejected changes stay local and can be retried after correcting the ca
 
 Installation instructions are available under **Installation**, which contains only
 information. Offline readiness is available under **Konto → Fler alternativ**. Wait for **Redo utan nät** before first offline use. The service worker
-caches the app shell, not API responses. IndexedDB holds user data. Installation uses
+caches the app shell, not API responses. While online, HTML, scripts and styles
+are fetched from the server and their cached copies are refreshed; cached assets
+are used when the network is unavailable. IndexedDB holds user data. Installation uses
 the browser's install action; on iPhone use Safari's Share → Add to Home Screen.
 Service workers need HTTPS, except for localhost/loopback development. Opening the
 laptop's LAN IP over HTTP on a phone is not sufficient for offline installation;
 a trusted HTTPS setup is needed for physical-device testing.
+
+To refresh a stale app shell while online, use the refresh button beside the
+version in the header. If an older cached screen does not show that button, open
+`/force-update.html` once. It clears only the service worker and app shell cache;
+IndexedDB time entries remain intact.
 
 IndexedDB databases and queues are separated by account. The previous shared
 `timereport-local` database is no longer used or automatically imported. Previously
@@ -224,7 +231,11 @@ with weekly and monthly totals including net, VAT, and gross. Entries without a 
 without a billing assignment, or assigned to another customer are listed separately.
 The preview uses entries already synchronized to the server; the page warns if local
 entries for that month remain unsynchronized. No invoice number is assigned and no
-invoice is issued or sent in this stage.
+invoice is issued or sent in this preview. Under **Fakturanummerserie**, set the next
+number to continue an existing sequence (for example, 1061); after issuing, it moves
+forward automatically and cannot be lowered. Issuing requires a saved seller profile
+and creates a stored, immutable snapshot and PDF. The same customer cannot be invoiced
+twice for the same month.
 
 ## Authentication
 
@@ -388,27 +399,32 @@ records with Lombok builders. For customer codes use URL-encoded path segments.
 All endpoints below require
 `Authorization: Bearer <access-token>` and operate on the signed-in account.
 
-| Method and path                                        | Purpose                                                        |
-|--------------------------------------------------------|----------------------------------------------------------------|
-| `GET /api/invoicing/profile`                            | Read seller billing profile; returns `204` when not configured |
-| `PUT /api/invoicing/profile`                            | Create or replace the account's seller billing profile         |
-| `GET /api/invoicing/customers`                          | List billing customers                                         |
-| `POST /api/invoicing/customers`                         | Create a billing customer                                      |
-| `PUT /api/invoicing/customers/{uuid}`                   | Replace a billing customer's details                           |
-| `DELETE /api/invoicing/customers/{uuid}`                | Delete an unassigned billing customer                           |
-| `GET /api/invoicing/customer-codes`                     | List customer codes and their optional billing assignment      |
-| `PUT /api/invoicing/customer-codes/{code}`              | Assign customer, service description, hourly rate, and VAT     |
-| `DELETE /api/invoicing/customer-codes/{code}`           | Remove billing assignment while retaining the customer code    |
-| `GET /api/invoicing/draft?month=2026-10&customerId={uuid}` | Read-only monthly preview for one customer, grouped by ISO week and code |
-| `PUT /api/customer-codes/{code}`                       | Create, activate, or deactivate a customer code                |
-| `GET /api/customer-codes`                              | List codes, including inactive ones                            |
-| `PUT /api/time-entries/{uuid}`                         | Create or replace a time entry                                 |
-| `GET /api/time-entries/{uuid}`                         | Read a non-deleted entry                                       |
-| `GET /api/time-entries?from=2026-10-01&to=2026-10-31`  | List entries in an inclusive date range, ordered by date/start |
-| `DELETE /api/time-entries/{uuid}?expectedVersion=1`    | Delete the version the client last read                        |
-| `GET /api/vacation-days?from=2026-10-01&to=2026-10-31` | List vacation marks in an inclusive date range                 |
-| `PUT /api/vacation-days/{date}`                        | Mark a vacation day (`YYYY-MM-DD`), returns `204`              |
-| `DELETE /api/vacation-days/{date}`                     | Remove a vacation mark, returns `204`                          |
+| Method and path                                            | Purpose                                                                                                        |
+|------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
+| `GET /api/invoicing/profile`                               | Read seller billing profile; returns `204` when not configured                                                 |
+| `PUT /api/invoicing/profile`                               | Create or replace the account's seller billing profile                                                         |
+| `GET /api/invoicing/customers`                             | List billing customers                                                                                         |
+| `POST /api/invoicing/customers`                            | Create a billing customer                                                                                      |
+| `PUT /api/invoicing/customers/{uuid}`                      | Replace a billing customer's details                                                                           |
+| `DELETE /api/invoicing/customers/{uuid}`                   | Delete an unassigned billing customer                                                                          |
+| `GET /api/invoicing/customer-codes`                        | List customer codes and their optional billing assignment                                                      |
+| `PUT /api/invoicing/customer-codes/{code}`                 | Assign customer, service description, hourly rate, and VAT                                                     |
+| `DELETE /api/invoicing/customer-codes/{code}`              | Remove billing assignment while retaining the customer code                                                    |
+| `GET /api/invoicing/draft?month=2026-10&customerId={uuid}` | Read-only monthly source data for a customer, grouped by ISO week and code                                     |
+| `POST /api/invoicing/draft/pdf`                            | Generate an unissued PDF preview with optional line adjustments                                                |
+| `GET /api/invoicing/invoice-numbering`                     | Read the next invoice number (defaults to 1)                                                                   |
+| `PUT /api/invoicing/invoice-numbering`                     | Set or increase the next invoice number                                                                        |
+| `POST /api/invoicing/invoices`                             | Issue the reviewed month/customer invoice and return its PDF; accepts the same line adjustments as the preview |
+| `GET /api/invoicing/invoices/{number}/pdf`                 | Download the account's issued PDF again                                                                        |
+| `PUT /api/customer-codes/{code}`                           | Create, activate, or deactivate a customer code                                                                |
+| `GET /api/customer-codes`                                  | List codes, including inactive ones                                                                            |
+| `PUT /api/time-entries/{uuid}`                             | Create or replace a time entry                                                                                 |
+| `GET /api/time-entries/{uuid}`                             | Read a non-deleted entry                                                                                       |
+| `GET /api/time-entries?from=2026-10-01&to=2026-10-31`      | List entries in an inclusive date range, ordered by date/start                                                 |
+| `DELETE /api/time-entries/{uuid}?expectedVersion=1`        | Delete the version the client last read                                                                        |
+| `GET /api/vacation-days?from=2026-10-01&to=2026-10-31`     | List vacation marks in an inclusive date range                                                                 |
+| `PUT /api/vacation-days/{date}`                            | Mark a vacation day (`YYYY-MM-DD`), returns `204`                                                              |
+| `DELETE /api/vacation-days/{date}`                         | Remove a vacation mark, returns `204`                                                                          |
 
 Customer-code and time-entry PUTs return `200` with the saved object and `version`;
 their DELETE returns `204`. Vacation writes return `204`. Invalid inputs return `400`, absent/deleted entries `404`, and

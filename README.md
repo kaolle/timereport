@@ -61,7 +61,11 @@ origin, including its port. The default is `http://localhost:8080`.
 
 ## Mobile web app, offline storage, and synchronization (stage 4)
 
-The top menu separates **Tider**, **Månadsrapport**, **Kundkoder**, **Fakturering**, **Konto**, and **Installation**.
+The top menu separates **Tider**, **Månadsrapport**, **Fakturering**, **Konto**, and
+**Installation**. **Fakturering** has three tabs: **Ny faktura**, **Ditt företag**, and
+**Kunder**. Use Left/Right arrows or Home/End while a tab has focus to switch panels.
+Customer-code billing assignments are shown inside each customer card; the code list
+remains there for managing active and removed codes.
 **Tider** is always the default after login or opening/reloading the app.
 Switching views during a session preserves the selected week and any form input.
 
@@ -87,8 +91,8 @@ On first use, connect to the server and log in. Customer code is optional. Use
 After a 0.7-second typing pause, an unknown code shows **Spara kundkod ”kod”**;
 confirm it before the code and time are saved. Existing codes and entries without
 a code still autosave. New codes are created on synchronization, and confirmation
-also works offline. **Kundkoder** can
-still add codes directly online.
+also works offline. The code list under **Fakturering → Kunder** can also add codes
+directly online.
 Previously fetched codes and entries remain available offline. Days not previously
 fetched can have an incomplete local view; the server checks all entries when a
 queued change is uploaded.
@@ -111,8 +115,8 @@ monthly report; return events are throttled to at most once per 30 seconds.
 
 The main view only shows a compact status when changes are waiting or an error
 needs attention. **Konto → Fler alternativ** contains manual sync/refresh, a local
-JSON copy, and offline readiness for occasional use. Customer codes have
-their own **Kundkoder** menu view. **Synka tider nu**
+JSON copy, and offline readiness for occasional use. Customer codes are managed under
+**Fakturering → Kunder** and can also be created while entering time. **Synka tider nu**
 saves valid pending form changes and uploads immediately; unconfirmed new codes
 remain unsaved. An in-flight request can finish while new
 edits are being saved locally.
@@ -134,7 +138,9 @@ a trusted HTTPS setup is needed for physical-device testing.
 
 To refresh a stale app shell while online, use the refresh button beside the
 version in the header. If an older cached screen does not show that button, open
-`/force-update.html` once. It clears only the service worker and app shell cache;
+`/force-update.html` and choose **Hämta senaste versionen**. Use the same procedure
+if new controls appear but do not respond: an older worker may still serve old
+JavaScript alongside updated HTML. It clears only the service worker and app shell cache;
 IndexedDB time entries remain intact.
 
 IndexedDB databases and queues are separated by account. The previous shared
@@ -153,8 +159,10 @@ save when supported, but the browser may decline it.
 
 Web files live under `src/main/resources/META-INF/resources/`. There are no runtime
 JavaScript dependencies or frontend build step. Modules separate calculation,
-IndexedDB storage, API calls, and UI. Bump the shell cache version in `sw.js` whenever
-changing shell assets. Updates activate after all existing app tabs/windows close;
+IndexedDB storage, API calls, and UI. When changing shell assets, bump
+`application-version` in `index.html` and `force-update.html`, the asset URL versions
+in those pages, and the invoicing module import in `js/app.js`. The service worker
+cache version comes from the registration URL's `v` parameter. Updates activate after all existing app tabs/windows close;
 they do not clear IndexedDB or force-reload an unsaved form.
 
 ### Web tests
@@ -180,11 +188,11 @@ iOS/Android testing is still required before production use.
 
 ## Customer codes
 
-The **Kundkoder** view lists active codes. **Ta bort** asks for confirmation and
-inactivates the code using its current server version; it disappears from normal
+The code list under **Fakturering → Kunder** lists active codes. **Ta bort** asks for
+confirmation and inactivates the code using its current server version; it disappears from normal
 selection for new entries. Existing time entries and monthly reports retain the
 code. **Borttagna kundkoder → Återställ** makes an inactive code available again.
-Adding, removing, and restoring codes from this view require a connection. Removal
+Adding, removing, and restoring codes from this section require a connection. Removal
 is disabled while local changes using the code are awaiting synchronization.
 Historical entries can still retain an inactive code when corrected. No entries
 are deleted and no database migration is needed.
@@ -213,29 +221,30 @@ or CSV export is introduced by this feature.
 
 ## Faktureringsinställningar (etapp 1)
 
-Choose **Fakturering** in the top menu while online to configure seller details,
-registered customers, and billing data for each existing customer code. A customer
-can own several codes; each code can be assigned a customer, service description,
-hourly rate, and VAT rate. The optional customer short name is shown next to its
-codes in the time-entry selector, which remains usable offline after the labels are
-cached. A customer code is required for a time entry to be included in an invoice
-preview. Existing time entries and codes are left unchanged.
-Unassigned codes remain available for time reporting and are excluded from a selected
-customer's draft.
+Choose **Fakturering → Ditt företag** while online to configure seller details and
+the next invoice number. Use **Fakturering → Kunder** to add customers and manage
+their billing details. Each customer can have several customer codes, with a service
+description, hourly rate, and VAT rate per code. Codes can be added in the customer
+form, in the customer's code section, or while registering time. Their optional
+short name appears beside the code in the time-entry selector, including offline
+after the label has been cached. A customer code is required for a time entry to be
+included in an invoice. Unassigned codes remain available for time reporting and
+are excluded from a customer's invoice draft.
 
-## Fakturaunderlag (etapp 2)
+## Ny faktura (etapp 2)
 
-Choose **Fakturering**, select a month and customer, then choose **Visa fakturaunderlag**.
-The read-only preview lists billable hours and amounts per customer code and ISO week,
-with weekly and monthly totals including net, VAT, and gross. Entries without a code,
-without a billing assignment, or assigned to another customer are listed separately.
-The preview uses entries already synchronized to the server; the page warns if local
-entries for that month remain unsynchronized. No invoice number is assigned and no
-invoice is issued or sent in this preview. Under **Fakturanummerserie**, set the next
-number to continue an existing sequence (for example, 1061); after issuing, it moves
-forward automatically and cannot be lowered. Issuing requires a saved seller profile
-and creates a stored, immutable snapshot and PDF. The same customer cannot be invoiced
-twice for the same month.
+Choose **Fakturering → Ny faktura**, select a month and customer, then choose
+**Hämta fakturaunderlag**. Review and adjust the invoice lines, preview the PDF, then
+choose **Godkänn och utfärda fakturan**. The preview includes billable hours and
+amounts per customer code and ISO week, with net, VAT, and gross totals. You can edit
+descriptions, hours, rates, and VAT in the draft; those edits do not change time
+entries. Entries without a code, without a billing assignment, or assigned to another
+customer are listed separately. Only synchronized entries are used; the page warns
+if local entries for that month remain unsynchronized. A permanent number is assigned
+only when the reviewed invoice is issued. The next number is configured under
+**Ditt företag** (for example, 1061); issuing advances it automatically and it cannot
+be lowered. The issued invoice is stored as an immutable snapshot and PDF. The same
+customer cannot be invoiced twice for the same month.
 
 ## Authentication
 

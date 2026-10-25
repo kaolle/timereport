@@ -11,6 +11,18 @@ let currencyCode = 'SEK';
 let previewUrl = null;
 let previewReadySignature = null;
 
+function showInvoiceView(view) {
+    document.querySelectorAll('[data-invoice-panel]').forEach(panel => {
+        panel.hidden = panel.dataset.invoicePanel !== view;
+    });
+    document.querySelectorAll('.invoice-navigation [data-invoice-view]').forEach(button => {
+        const selected = button.dataset.invoiceView === view;
+        button.setAttribute('aria-selected', String(selected));
+        button.tabIndex = selected ? 0 : -1;
+    });
+    if (view === 'customers') window.dispatchEvent(new Event('billing-customer-codes-opened'));
+}
+
 async function request(path, method = 'GET', body) {
     const response = await authenticatedFetch(path, {
         method, cache: 'no-store', signal: AbortSignal.timeout(10000),
@@ -379,7 +391,9 @@ function setProfile(profile) {
 }
 
 function customerPayload(form) {
-    return formValues(form);
+    const values = formValues(form);
+    for (const name of ['initialCode', 'initialCodeDescription', 'initialCodeRate', 'initialCodeVat']) delete values[name];
+    return values;
 }
 
 function createInput(field, value, prefix, required = false) {
@@ -465,23 +479,27 @@ function renderCustomers() {
                 await loadSettings();
             } catch (error) { status('billing-error', error.message); }
         });
-        details.append(summary, form);
+        const codeSection = document.createElement('section');
+        codeSection.className = 'customer-code-settings';
+        const codeHeading = document.createElement('h4');
+        codeHeading.textContent = 'Kundkoder och fakturering';
+        codeSection.append(codeHeading);
+        const assigned = codeSettings.filter(code => code.customerId === customer.id);
+        if (!assigned.length) {
+            const empty = document.createElement('p');
+            empty.className = 'field-help';
+            empty.textContent = 'Inga kundkoder är kopplade ännu.';
+            codeSection.append(empty);
+        }
+        for (const code of assigned) codeSection.append(renderCodeSettingsCard(code));
+        codeSection.append(createCustomerCodeForm(customer));
+        details.append(summary, form, codeSection);
         item.append(details);
         list.append(item);
     }
 }
 
-function renderCodeSettings() {
-    const list = $('billing-code-list');
-    list.replaceChildren();
-    if (!codeSettings.length) {
-        const empty = document.createElement('p');
-        empty.className = 'field-help';
-        empty.textContent = 'Lägg först till kundkoder under Kundkoder. De visas sedan här.';
-        list.append(empty);
-        return;
-    }
-    for (const code of codeSettings) {
+function renderCodeSettingsCard(code) {
         const card = document.createElement('article');
         card.className = 'billing-code-card';
         const heading = document.createElement('h4');
@@ -541,8 +559,73 @@ function renderCodeSettings() {
             } catch (error) { status('billing-error', error.message); }
         });
         card.append(heading, form);
-        list.append(card);
+        return card;
+}
+
+function createCustomerCodeForm(customer) {
+    const form = document.createElement('form');
+    form.className = 'billing-form customer-code-form';
+    const heading = document.createElement('h5');
+    heading.textContent = 'Lägg till eller koppla kundkod';
+    const codeField = createInput({name: 'code', label: 'Kundkod', maxLength: 80,
+        help: 'Skriv en ny kod eller välj en befintlig. Den kan även skapas direkt vid tidsregistrering.'}, '', `new-code-${customer.id}`, true);
+    const codeInput = codeField.querySelector('input');
+    const datalistId = `customer-code-options-${customer.id}`;
+    codeInput.setAttribute('list', datalistId);
+    form.append(heading, codeField,
+        createInput({name: 'serviceDescription', label: 'Tjänst på fakturan', maxLength: 240}, 'Konsulttjänster', `new-code-description-${customer.id}`, true),
+        createInput({name: 'hourlyRate', label: 'Timpris', type: 'number', min: '0', max: '99999999', step: '0.01'}, '', `new-code-rate-${customer.id}`, true),
+        createInput({name: 'vatPercent', label: 'Moms (%)', type: 'number', min: '0', max: '100', step: '0.01', defaultValue: defaultVat}, defaultVat, `new-code-vat-${customer.id}`, true));
+    const datalist = document.createElement('datalist');
+    datalist.id = datalistId;
+    for (const item of codeSettings.filter(candidate => candidate.active && (!candidate.customerId || candidate.customerId === customer.id))) {
+        datalist.append(new Option(item.code));
     }
+    form.append(datalist);
+    const save = document.createElement('button');
+    save.type = 'submit'; save.className = 'secondary-button'; save.textContent = 'Spara kundkod';
+    const message = document.createElement('p');
+    message.className = 'field-help'; message.setAttribute('role', 'status');
+    form.append(save, message);
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!navigator.onLine) { message.textContent = 'Anslut till nätet för att spara kopplingen.'; return; }
+        const values = formValues(form);
+        const code = values.code.trim();
+        try {
+            await saveCodeForCustomer(customer.id, code, values.serviceDescription, Number(values.hourlyRate), Number(values.vatPercent));
+            message.textContent = `Kundkoden ${code} är sparad och kopplad till ${customer.name}.`;
+            await loadSettings();
+        } catch (error) { message.textContent = error.message || 'Kundkoden kunde inte kopplas.'; }
+    });
+    return form;
+}
+
+async function saveCodeForCustomer(customerId, code, description, rate, vat) {
+    if (!code) throw new Error('Ange en kundkod.');
+    const existing = codeSettings.find(item => item.code === code);
+    if (existing && !existing.active) throw new Error('Kundkoden är borttagen. Återställ den under Alla kundkoder först.');
+    if (existing?.customerId && existing.customerId !== customerId) {
+        throw new Error('Kundkoden är redan kopplad till en annan kund.');
+    }
+    if (!existing) await request(`/api/customer-codes/${encodeURIComponent(code)}`, 'PUT', {active: true, expectedVersion: 0});
+    await request(`/api/invoicing/customer-codes/${encodeURIComponent(code)}`, 'PUT', {
+        customerId, serviceDescription: description, hourlyRate: rate, vatPercent: vat
+    });
+}
+
+function renderCodeSettings() {
+    const list = $('unassigned-billing-codes');
+    list.replaceChildren();
+    const unassigned = codeSettings.filter(code => !code.customerId);
+    if (!unassigned.length) {
+        const empty = document.createElement('p');
+        empty.className = 'field-help';
+        empty.textContent = 'Alla faktureringskoder är kopplade till en kund.';
+        list.append(empty);
+        return;
+    }
+    for (const code of unassigned) list.append(renderCodeSettingsCard(code));
 }
 
 async function loadSettings() {
@@ -575,6 +658,20 @@ export function configureInvoicingSettings() {
     const now = new Date();
     $('invoice-draft-month').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     $('invoice-draft-form').addEventListener('submit', loadDraft);
+    const tabs = [...document.querySelectorAll('.invoice-navigation [data-invoice-view]')];
+    tabs.forEach((button, index) => {
+        button.addEventListener('click', () => showInvoiceView(button.dataset.invoiceView));
+        button.addEventListener('keydown', event => {
+            const target = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+                : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+                : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+            if (target === null) return;
+            event.preventDefault();
+            showInvoiceView(tabs[target].dataset.invoiceView);
+            tabs[target].focus();
+        });
+    });
+    showInvoiceView('new');
     $('invoice-numbering-form').addEventListener('submit', async event => {
         event.preventDefault();
         if (!navigator.onLine) {
@@ -610,15 +707,54 @@ export function configureInvoicingSettings() {
         event.preventDefault();
         const form = event.currentTarget;
         if (!navigator.onLine) { status('billing-customer-status', 'Anslut till nätet för att spara.'); return; }
+        const initialCode = form.elements.initialCode.value.trim();
+        if (initialCode && (!form.elements.initialCodeDescription.value.trim() || !form.elements.initialCodeRate.value)) {
+            status('billing-customer-status', 'Ange tjänstebeskrivning och timpris för kundkoden.');
+            (form.elements.initialCodeDescription.value.trim() ? form.elements.initialCodeRate : form.elements.initialCodeDescription).focus();
+            return;
+        }
+        const initialCodeSettings = codeSettings.find(code => code.code === initialCode);
+        if (initialCodeSettings?.customerId) {
+            status('billing-customer-status', 'Kundkoden är redan kopplad till en kund. Koppla den från kundens kundkodsinställningar i stället.');
+            return;
+        }
+        if (initialCodeSettings && !initialCodeSettings.active) {
+            status('billing-customer-status', 'Kundkoden är borttagen. Återställ den under Alla kundkoder först.');
+            return;
+        }
+        let createdCustomer;
         try {
-            await request('/api/invoicing/customers', 'POST', customerPayload(form));
+            createdCustomer = await request('/api/invoicing/customers', 'POST', customerPayload(form));
+        } catch (error) {
+            status('billing-customer-status', error.message || 'Kunden kunde inte sparas.');
+            return;
+        }
+        if (initialCode) {
+            try {
+                await saveCodeForCustomer(createdCustomer.id, initialCode, form.elements.initialCodeDescription.value.trim(),
+                    Number(form.elements.initialCodeRate.value), Number(form.elements.initialCodeVat.value || defaultVat));
+            } catch (error) {
+                status('billing-customer-status', `Kunden sparades, men kundkoden kunde inte kopplas: ${error.message}`);
+                await loadSettings();
+                return;
+            }
+        }
+        try {
             form.reset();
             $('billing-customer-country').value = 'Sverige';
             $('billing-customer-terms').value = '30';
-            status('billing-customer-status', 'Kunden har lagts till.');
+            $('billing-initial-code-vat').value = defaultVat;
+            status('billing-customer-status', initialCode ? 'Kunden och kundkoden har lagts till.' : 'Kunden har lagts till.');
             await loadSettings();
-        } catch (error) { status('billing-customer-status', error.message); }
+        } catch (error) { status('billing-customer-status', error.message || 'Kundvyn kunde inte uppdateras.'); }
     });
+
+    $('billing-initial-code').addEventListener('input', event => {
+        const required = Boolean(event.currentTarget.value.trim());
+        $('billing-initial-code-description').required = required;
+        $('billing-initial-code-rate').required = required;
+    });
+
 
     window.addEventListener('online', () => { if (document.querySelector('[data-view-panel="invoicing"]:not([hidden])')) void loadSettings(); });
     window.addEventListener('offline', () => status('invoicing-status', 'Utan nät. Inställningarna kan inte ändras offline.'));

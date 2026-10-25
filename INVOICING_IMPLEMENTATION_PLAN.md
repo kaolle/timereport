@@ -6,7 +6,11 @@ Skapa fakturor från tidrapporter med en konfiguration per användarkonto. Förs
 
 ## Nuläge och fakturamall
 
-Tjänsten har redan kontoisolerade tidposter, kundkoder och månadsrapport. Kundkoder är för närvarande inte kopplade till ett separat kundregister och en tidpost kan sakna kundkod. Fakturamallen finns i [mallar/faktura-1061.pdf](mallar/faktura-1061.pdf).
+Tjänsten har kontoisolerade tidposter, kundregister, fakturaprofil och månadsrapport.
+Kundkoder kan kopplas till fakturakunder med tjänstebeskrivning, timpris och moms.
+Månadsutkast kan justeras, förhandsgranskas som PDF och utfärdas med ett permanent
+fakturanummer. Historikvyn och e-postutskick återstår; utskicksförslaget finns i
+[INFRA_TODO.md](INFRA_TODO.md). Fakturamallen finns i [mallar/faktura-1061.pdf](mallar/faktura-1061.pdf).
 
 Mallen är en ensidig faktura med fakturametadata och referenser överst, faktureringsadress, tabell med tjänst/antal/timpris/belopp, nettobelopp, moms, avrundning och totalsumma samt säljarens adress- och betalningsuppgifter i sidfoten. PDF:ens tredjepartslogotyp och attribution ska inte återanvändas utan uttryckligt önskemål och rätt att använda dem.
 
@@ -70,6 +74,16 @@ Inför nya Flyway-migreringar; ändra inte redan tillämpade migreringar. Håll 
 - PDF:en innehåller mallens centrala fält, rätt summeringar och fakturanummer; den går att ladda ned.
 - Konton kan bara läsa och utfärda sina egna kunders och fakturors data.
 - Utfärdad faktura ändras inte om en tidspost eller kundinställning senare ändras.
+
+## Gränssnittets faktureringsmeny
+
+Fakturering delas i flikarna **Ny faktura**, **Ditt företag** och **Kunder**. Flikarna
+stödjer klick, vänster-/högerpil och Home/End. Ny faktura samlar
+månadsurval, fakturautkast, PDF-förhandsvisning och utfärdande. Företagsdelen innehåller
+säljaruppgifter och fakturanummerserie. Kundkortet äger visningen och inställningarna
+för sina kundkoder. Fristående kodhantering ligger kvar under Kunder för att kunna
+aktivera/inaktivera koder; nya koder kan skapas både från kundkortet och direkt vid
+tidsregistrering.
 
 ## Beslut att granska före implementation
 

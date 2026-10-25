@@ -84,9 +84,45 @@ async function openDraft(page) {
     await expect(page.locator('#invoicing-status')).toHaveText('Inställningarna är hämtade.');
     await page.locator('#invoice-draft-month').fill('2026-10');
     await page.locator('#invoice-draft-customer').selectOption(customerId);
-    await page.getByRole('button', {name: 'Visa fakturaunderlag', exact: true}).click();
+    await page.getByRole('button', {name: 'Hämta fakturaunderlag', exact: true}).click();
     await expect(page.locator('.invoice-adjustment-card')).toHaveCount(1);
 }
+
+test('invoicing tabs switch complete panels on mobile and desktop and support keyboard navigation', async ({page, context}) => {
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await setup(page, context);
+    for (const width of [412, 1280]) {
+        await page.setViewportSize({width, height: 900});
+        const company = page.getByRole('tab', {name: 'Ditt företag', exact: true});
+        const customers = page.getByRole('tab', {name: 'Kunder', exact: true});
+        const newInvoice = page.getByRole('tab', {name: 'Ny faktura', exact: true});
+        await company.click();
+        await expect(company).toHaveAttribute('aria-selected', 'true');
+        await expect(page.locator('#seller-profile-form')).toBeVisible();
+        await expect(page.locator('#invoice-numbering-form')).toBeVisible();
+        await expect(page.locator('#invoice-draft-form')).toBeHidden();
+        await expect(page.locator('#code-form')).toBeHidden();
+        await customers.click();
+        await expect(page.locator('#billing-customer-list')).toBeVisible();
+        await expect(page.locator('#code-form')).toBeVisible();
+        await expect(page.locator('#invoice-numbering-form')).toBeHidden();
+        await expect(page.locator('#invoice-panel-customers #unassigned-billing-codes')).toHaveCount(1);
+        await newInvoice.click();
+        await expect(page.locator('#invoice-draft-form')).toBeVisible();
+        await expect(page.locator('#billing-customer-list')).toBeHidden();
+        await newInvoice.press('ArrowRight');
+        await expect(company).toBeFocused();
+        await expect(company).toHaveAttribute('aria-selected', 'true');
+        await company.press('End');
+        await expect(customers).toBeFocused();
+        await expect(customers).toHaveAttribute('aria-selected', 'true');
+        await customers.press('Home');
+        await expect(newInvoice).toBeFocused();
+        await expect(newInvoice).toHaveAttribute('aria-selected', 'true');
+    }
+    expect(errors).toEqual([]);
+});
 
 test('preview sends the edited rows and opens a PDF under the application security policy without issuing', async ({
                                                                                                                        page,

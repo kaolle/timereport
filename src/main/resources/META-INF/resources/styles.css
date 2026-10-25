@@ -473,6 +473,9 @@ dialog p { font-size: 14px; color: var(--muted); }
 }
 .main-navigation button { flex: 1 1 auto; min-width: 0; padding: 10px 8px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 650; }
 .main-navigation button[aria-current="page"] { background: #e4eddb; color: var(--green); }
+.invoice-navigation { display: flex; gap: 8px; overflow-x: auto; border-bottom: 1px solid var(--line); margin: 0 0 18px; padding-bottom: 0; }
+.invoice-navigation button { flex: 0 0 auto; min-width: 0; padding: 10px 14px 9px; border-radius: 8px 8px 0 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); font-weight: 650; white-space: nowrap; }
+.invoice-navigation button[aria-selected="true"] { border-bottom-color: var(--green); background: #f3f6f0; color: var(--green); }
 .codes-view .code-form { margin-top: 20px; max-width: 460px; }
 .invoicing-view > section { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 16px; }
 .billing-form { display: grid; gap: 12px; max-width: 680px; }
@@ -484,6 +487,10 @@ dialog p { font-size: 14px; color: var(--muted); }
 .billing-list { list-style: none; margin: 16px 0; padding: 0; }
 .billing-list > li { border-bottom: 1px solid var(--line); padding: 12px 0; }
 .billing-customer-editor { margin: 14px 0; }
+.customer-code-settings { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
+.customer-code-settings h4 { margin: 0 0 8px; }
+.customer-code-form { border: 1px solid var(--line); border-radius: 10px; margin: 16px 0; padding: 14px; }
+.customer-code-form h5 { margin: 0; font-size: 1rem; }
 .billing-code-card { border-bottom: 1px solid var(--line); padding: 14px 0; }
 .billing-code-card h4 { margin: 0 0 12px; }
 .billing-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

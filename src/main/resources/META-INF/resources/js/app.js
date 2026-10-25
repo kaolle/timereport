@@ -1,5 +1,5 @@
 import {configureMonthlyReport} from './report.js';
-import {configureInvoicingSettings} from './invoicing-settings.js';
+import {configureInvoicingSettings} from './invoicing-settings.js?v=46';
 import {configureAccountTools, logout, requireAccount} from './auth.js';
 import {formatMinutes, intervalsOverlap, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
 import {
@@ -99,7 +99,6 @@ function showView(view) {
         else button.removeAttribute('aria-current');
     });
     if (view === 'report') void monthlyReport.refreshIfOpen();
-    if (view === 'codes') void refreshCodes();
     if (view === 'invoicing') void invoicingSettings.refreshIfOpen();
 }
 
@@ -943,6 +942,7 @@ window.addEventListener('focus', refreshOnReturn);
 document.addEventListener('visibilitychange', refreshOnReturn);
 window.addEventListener('online', () => { onlineStatus = null; connectionStatus(); void syncPending().then(() => refresh()); });
 window.addEventListener('billing-labels-updated', () => void refreshBillingLabels(true));
+window.addEventListener('billing-customer-codes-opened', () => void refreshCodes());
 window.addEventListener('offline', connectionStatus);
 window.addEventListener('beforeunload', event => {
     if (formDirty) { event.preventDefault(); event.returnValue = ''; }

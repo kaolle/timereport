@@ -486,7 +486,7 @@ test('login, reload and week navigation leave every day unselected until explici
 });
 
 
-test('top navigation defaults to time, keeps the selected week and separates reports, codes and account', async ({ page, context }, testInfo) => {
+test('top navigation defaults to time, keeps the selected week and opens customer codes through invoicing tabs', async ({ page, context }, testInfo) => {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await mock(context);
@@ -495,7 +495,8 @@ test('top navigation defaults to time, keeps the selected week and separates rep
     await expect(menu.getByRole('button', { name: 'Tider', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('#time-view')).toBeVisible();
     await expect(page.locator('#monthly-report')).toBeHidden();
-    await expect(page.locator('#codes-view')).toBeHidden();
+    await expect(page.locator('#invoicing-view')).toBeHidden();
+    await expect(menu.getByRole('button', { name: 'Kundkoder', exact: true })).toHaveCount(0);
     await expect(page.locator('#account-view')).toBeHidden();
     await page.locator('#previous-week').click();
     await page.locator('.week-day').nth(1).click();
@@ -503,14 +504,17 @@ test('top navigation defaults to time, keeps the selected week and separates rep
     await page.locator('#start').fill('08:30');
     await page.locator('#end').fill('17:45');
     await expect.poll(async () => (await snapshot(page)).entries.length).toBe(1);
-    await menu.getByRole('button', { name: 'Kundkoder', exact: true }).click();
-    await expect(page.locator('#codes-view')).toBeVisible();
+    await menu.getByRole('button', { name: 'Fakturering', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Ny faktura', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('tab', { name: 'Kunder', exact: true }).click();
+    await expect(page.getByRole('tabpanel', { name: 'Kunder', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Kundkoder', exact: true })).toBeVisible();
     await expect(page.locator('#code-list')).toContainText('FAIR1234');
     await expect(page.locator('#time-view')).toBeHidden();
     await expect(page.getByText('Kundkoder och installation', { exact: true })).toHaveCount(0);
     await menu.getByRole('button', { name: 'Månadsrapport', exact: true }).click();
     await expect(page.locator('#monthly-report')).toBeVisible();
+    await expect(page.locator('#invoicing-view')).toBeHidden();
     await expect(page.locator('#report-status')).toContainText('Månadens tider har hämtats');
     await menu.getByRole('button', { name: 'Konto', exact: true }).click();
     await expect(page.locator('#account-view')).toBeVisible();

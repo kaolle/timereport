@@ -4,6 +4,12 @@ const account = { accountId: '55555555-5555-4555-8555-555555555555', email: 'cod
 const snapshot = page => page.evaluate(async () => (await import('/js/storage.js')).snapshot());
 const remove = page => page.getByRole('button', { name: 'Ta bort kundkod FAIR1234', exact: true });
 
+async function openCodes(page) {
+    await page.getByRole('button', { name: 'Fakturering', exact: true }).click();
+    await page.getByRole('tab', { name: 'Kunder', exact: true }).click();
+    await expect(page.getByRole('tabpanel', { name: 'Kunder', exact: true })).toBeVisible();
+}
+
 async function setup(page, context) {
     const state = { codes: [{ code: 'FAIR1234', active: true, version: 1 }, { code: 'OTHER', active: true, version: 1 }],
         writes: [], history: [], failure: null };
@@ -32,7 +38,7 @@ async function setup(page, context) {
     await page.goto('/');
     await expect(page.locator('#main')).toBeVisible();
     await expect(page.locator('#offline-readiness')).toContainText('Redo utan nät');
-    await page.getByRole('button', { name: 'Kundkoder', exact: true }).click();
+    await openCodes(page);
     await expect(remove(page)).toBeEnabled();
     return state;
 }
@@ -49,7 +55,7 @@ test('removing and restoring a used code preserves times and report totals', asy
         deductedMinutes: 30, customerCode: 'FAIR1234', comment: 'History', version: 1 }];
     await page.getByRole('button', { name: 'Månadsrapport', exact: true }).click();
     await expect(page.locator('#report-total')).toHaveText('8 h 30 min');
-    await page.getByRole('button', { name: 'Kundkoder', exact: true }).click();
+    await openCodes(page);
     page.once('dialog', dialog => dialog.dismiss());
     await remove(page).click();
     expect(state.writes).toHaveLength(0);

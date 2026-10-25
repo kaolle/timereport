@@ -67,7 +67,6 @@ public class PdfBoxInvoiceGenerator implements InvoicePdfGenerator {
         var page = new Page(pdfPage, stream);
         if (continuation) {
             text(stream, LEFT, 790, BOLD, 13, (draft ? "Fakturautkast " : "Faktura ") + invoice.invoiceNumber() + " - fortsättning");
-            tableHeader(stream, 752);
             page.y = 730;
             return page;
         }
@@ -88,18 +87,18 @@ public class PdfBoxInvoiceGenerator implements InvoicePdfGenerator {
         meta(stream, metaX, metaY - 84, "Förfallodatum", DATE.format(invoice.dueDate()));
         meta(stream, metaX, metaY - 112, "Period", MONTH.format(YearMonth.parse(invoice.periodMonth()).atDay(1)));
 
-        roundedPanel(stream, LEFT - 4, 544, 290, 178);
-        roundedHeader(stream, LEFT - 4, 684, 290, 24, "FAKTURERAS TILL");
+        roundedPanel(stream, LEFT - 4, 604, 290, 168);
+        roundedHeader(stream, LEFT - 4, 744, 290, 24, "FAKTURERAS TILL");
         var customer = invoice.customer();
-        text(stream, LEFT, 674, BOLD, 11, customer.name());
-        text(stream, LEFT, 658, REGULAR, 9, customer.addressLine());
-        text(stream, LEFT, 644, REGULAR, 9, customer.postalCode() + " " + customer.city());
-        text(stream, LEFT, 630, REGULAR, 9, customer.country());
+        text(stream, LEFT, 734, BOLD, 11, customer.name());
+        text(stream, LEFT, 718, REGULAR, 9, customer.addressLine());
+        text(stream, LEFT, 704, REGULAR, 9, customer.postalCode() + " " + customer.city());
+        text(stream, LEFT, 690, REGULAR, 9, customer.country());
         if (!customer.organizationNumber().isBlank())
-            text(stream, LEFT, 616, REGULAR, 9, "Org.nr " + customer.organizationNumber());
-        if (!customer.vatNumber().isBlank()) text(stream, LEFT, 602, REGULAR, 9, "Momsnr " + customer.vatNumber());
+            text(stream, LEFT, 676, REGULAR, 9, "Org.nr " + customer.organizationNumber());
+        if (!customer.vatNumber().isBlank()) text(stream, LEFT, 662, REGULAR, 9, "Momsnr " + customer.vatNumber());
 
-        float refsY = 586;
+        float refsY = 646;
         if (!customer.customerNumber().isBlank())
             text(stream, LEFT, refsY, REGULAR, 9, "Kundnummer: " + customer.customerNumber());
         if (!customer.customerReference().isBlank())
@@ -107,31 +106,49 @@ public class PdfBoxInvoiceGenerator implements InvoicePdfGenerator {
         if (!customer.ourReference().isBlank())
             text(stream, LEFT, refsY - 28, REGULAR, 9, "Vår referens: " + customer.ourReference());
 
-        text(stream, LEFT, 532, BOLD, 10, "Konsulttjänster - " + MONTH.format(YearMonth.parse(invoice.periodMonth()).atDay(1)));
-        tableHeader(stream, 506);
-        page.y = 484;
+        text(stream, LEFT, 580, BOLD, 10, "Konsulttjänster - " + MONTH.format(YearMonth.parse(invoice.periodMonth()).atDay(1)));
+        page.y = 532;
         return page;
     }
 
     private Page drawLines(PDDocument document, Page page, IssuedInvoice invoice, boolean draft) throws IOException {
-        for (var line : invoice.lines()) {
-            String label = line.customerCode() + " - " + line.description();
-            var wrapped = wrap(label, REGULAR, 8, 220);
-            float rowHeight = Math.max(28, wrapped.size() * 11 + 10);
-            if (page.y - rowHeight < 112) {
+        int index = 0;
+        while (index < invoice.lines().size()) {
+            float panelTop = page.y + 40;
+            float bottom = page.y;
+            int end = index;
+            // Measure the rows on this page before painting their shared background.
+            while (end < invoice.lines().size()) {
+                var line = invoice.lines().get(end);
+                float height = rowHeight(line);
+                if (bottom - height < 112 && end > index) break;
+                bottom -= height + 10;
+                end++;
+            }
+            roundedPanel(page.stream, LEFT - 4, bottom + 9, RIGHT - LEFT + 8, panelTop - bottom - 9);
+            tableHeader(page.stream, page.y + 22);
+            for (; index < end; index++) {
+                var line = invoice.lines().get(index);
+                String label = line.customerCode() + " - " + line.description();
+                var wrapped = wrap(label, REGULAR, 8, 220);
+                float rowBottom = page.y - rowHeight(line);
+                for (int i = 0; i < wrapped.size(); i++)
+                    text(page.stream, LEFT, page.y - i * 11, REGULAR, 8, wrapped.get(i));
+                text(page.stream, 300, page.y, REGULAR, 8, hours(line.workedMinutes()));
+                textRight(page.stream, 397, page.y, REGULAR, 8, amount(line.hourlyRate(), invoice));
+                textRight(page.stream, RIGHT, page.y, REGULAR, 8, amount(line.netAmount(), invoice));
+                page.y = rowBottom - 10;
+            }
+            if (index < invoice.lines().size()) {
                 page.stream.close();
                 page = newPage(document, invoice, true, draft);
             }
-            float rowBottom = page.y - rowHeight;
-            roundedPanel(page.stream, LEFT - 4, rowBottom + 9, RIGHT - LEFT + 8, rowHeight + 4);
-            for (int i = 0; i < wrapped.size(); i++)
-                text(page.stream, LEFT, page.y - i * 11, REGULAR, 8, wrapped.get(i));
-            text(page.stream, 300, page.y, REGULAR, 8, hours(line.workedMinutes()));
-            textRight(page.stream, 397, page.y, REGULAR, 8, amount(line.hourlyRate(), invoice));
-            textRight(page.stream, RIGHT, page.y, REGULAR, 8, amount(line.netAmount(), invoice));
-            page.y = rowBottom - 10;
         }
         return page;
+    }
+
+    private float rowHeight(IssuedInvoice.Line line) throws IOException {
+        return Math.max(28, wrap(line.customerCode() + " - " + line.description(), REGULAR, 8, 220).size() * 11 + 10);
     }
 
     private void drawTotals(Page page, IssuedInvoice invoice) throws IOException {

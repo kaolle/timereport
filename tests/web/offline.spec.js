@@ -237,7 +237,8 @@ test('empty customer catalogue allows optional codes and adding an online code',
     await open(page);
     await expect(page.locator('#customer-code')).toBeEnabled();
     await expect(page.locator('#customer-codes')).toBeDisabled();
-    await page.getByRole('button', { name: 'Kundkoder', exact: true }).click();
+    await page.getByRole('button', { name: 'Fakturering', exact: true }).click();
+    await page.getByRole('tab', { name: 'Kunder', exact: true }).click();
     await page.locator('#new-code').fill('FAIR1234');
     await page.locator('#add-code').click();
     await expect(page.locator('#customer-codes')).toBeEnabled();

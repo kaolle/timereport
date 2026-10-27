@@ -4,22 +4,22 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#183b35">
-    <meta name="application-version" content="46">
+    <meta name="application-version" content="49">
     <meta name="description" content="Registrera din arbetstid, även när nätet inte räcker till.">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="Tidrapport">
+    <meta name="apple-mobile-web-app-title" content="Tidrapporten">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-    <link rel="stylesheet" href="/styles.css?v=46">
-    <title>Tidrapport</title>
-    <script type="module" src="/js/app.js?v=46"></script>
+    <link rel="stylesheet" href="/styles.css?v=49">
+    <title>Tidrapporten</title>
+    <script type="module" src="/js/app.js?v=49"></script>
 </head>
 <body>
     <a class="skip-link" href="#main">Till innehållet</a>
     <header class="site-header">
-        <a class="brand" href="/" aria-label="Tidrapport, startsida"><span class="brand-icon"
-                                                                           aria-hidden="true">t.</span><span>Tidrapport</span><span
+        <a class="brand" href="/" aria-label="Tidrapporten, startsida"><span class="brand-icon"
+                                                                             aria-hidden="true">t.</span><span>Tidrapporten</span><span
                 id="app-version-label" class="app-version-label"></span></a>
         <button type="button" id="force-reload" class="secondary-button force-reload-button"
                 aria-label="Ladda om appen och hämta senaste version" title="Ladda om appen och hämta senaste version">↻
@@ -27,7 +27,7 @@
         <span id="connection" class="connection" role="status">Kontrollerar anslutning</span>
     </header>
     <section id="auth-panel" class="panel auth-panel" aria-labelledby="auth-title">
-        <h1 id="auth-title">Ditt konto i Tidrapport</h1>
+        <h1 id="auth-title">Ditt konto i Tidrapporten</h1>
         <form id="auth-form">
             <div class="field"><label for="auth-mode">Välj åtgärd</label><select id="auth-mode">
                 <option value="login">Logga in</option>
@@ -166,6 +166,9 @@
             <h2 id="invoicing-title">Fakturering</h2>
             <div class="invoice-navigation" role="tablist" aria-label="Faktureringsmeny">
                 <button type="button" id="invoice-tab-new" role="tab" data-invoice-view="new" aria-controls="invoice-panel-new" aria-selected="true">Ny faktura</button>
+                <button type="button" id="invoice-tab-history" role="tab" data-invoice-view="history"
+                        aria-controls="invoice-panel-history" aria-selected="false" tabindex="-1">Fakturor
+                </button>
                 <button type="button" id="invoice-tab-company" role="tab" data-invoice-view="company" aria-controls="invoice-panel-company" aria-selected="false" tabindex="-1">Ditt företag</button>
                 <button type="button" id="invoice-tab-customers" role="tab" data-invoice-view="customers" aria-controls="invoice-panel-customers" aria-selected="false" tabindex="-1">Kunder</button>
             </div>
@@ -185,6 +188,13 @@
                 </form>
                 <p id="invoice-draft-status" class="field-help" role="status"></p>
                 <div id="invoice-draft-result" class="invoice-draft-result" aria-live="polite"></div>
+            </section>
+            <section id="invoice-panel-history" role="tabpanel" data-invoice-panel="history"
+                     aria-labelledby="invoice-tab-history" hidden>
+                <h3>Utfärdade fakturor</h3>
+                <button id="invoice-history-refresh" type="button" class="secondary-button">Hämta fakturor</button>
+                <p id="invoice-history-status" class="field-help" role="status"></p>
+                <div id="invoice-history-list"></div>
             </section>
             <section id="invoice-panel-company" role="tabpanel" data-invoice-panel="company" aria-labelledby="invoice-tab-company" hidden>
                 <h3 id="seller-profile-title">Ditt företag</h3>
@@ -275,9 +285,31 @@
             <h2 id="installation-title">Installation</h2>
             <p>På iPhone: öppna i Safari, välj Dela och Lägg till på hemskärmen. På Android finns installation i webbläsarens meny. Installation kräver HTTPS, eller localhost på datorn.</p>
         </section>
-        <footer><span>Tidrapport</span></footer>
+        <footer><span>Tidrapporten</span></footer>
     </main>
     <dialog id="delete-dialog" aria-labelledby="delete-title"><h2 id="delete-title">Ta bort registreringen?</h2><p>Den tas bort från dagens översikt på den här enheten.</p><div class="dialog-actions"><button type="button" id="cancel-delete" class="secondary-button">Behåll</button><button type="button" id="confirm-delete" class="danger-button">Ta bort</button></div></dialog>
+    <dialog id="invoice-delivery-dialog" aria-labelledby="invoice-delivery-title">
+        <h2 id="invoice-delivery-title">Fakturan är utfärdad</h2>
+        <p>Välj ett eller båda alternativen. Du kan även leverera fakturan senare under Fakturor.</p>
+        <form id="invoice-delivery-form">
+            <fieldset id="invoice-delivery-options" class="invoice-delivery-options">
+                <legend class="sr-only">Leveransalternativ</legend>
+                <label class="billing-checkbox"><input id="invoice-delivery-download" type="checkbox" checked><span>Ladda ner fakturan som PDF</span></label>
+                <label class="billing-checkbox"><input id="invoice-delivery-email" type="checkbox"><span>Skicka fakturan via e-post</span></label>
+                <div class="field"><label for="invoice-delivery-recipient">Till e-postadress</label><input
+                        id="invoice-delivery-recipient" type="email" maxlength="254" disabled autocomplete="email">
+                </div>
+                <p class="field-help">Adressen föreslås från kunden. Ändringar här gäller bara detta utskick.</p>
+            </fieldset>
+            <p id="invoice-download-status" role="status"></p>
+            <p id="invoice-email-status" role="status"></p>
+            <p id="invoice-delivery-error" class="field-help" role="alert"></p>
+            <div class="dialog-actions">
+                <button id="invoice-delivery-submit" type="submit" class="primary-button">Genomför valen</button>
+                <button id="invoice-delivery-close" type="button" class="secondary-button">Stäng</button>
+            </div>
+        </form>
+    </dialog>
     <noscript><p class="error-box">JavaScript behöver vara aktiverat för att registrera och spara tid offline.</p></noscript>
 </body>
 </html>

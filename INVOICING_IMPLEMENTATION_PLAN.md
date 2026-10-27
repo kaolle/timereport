@@ -9,7 +9,8 @@ Skapa fakturor från tidrapporter med en konfiguration per användarkonto. Förs
 Tjänsten har kontoisolerade tidposter, kundregister, fakturaprofil och månadsrapport.
 Kundkoder kan kopplas till fakturakunder med tjänstebeskrivning, timpris och moms.
 Månadsutkast kan justeras, förhandsgranskas som PDF och utfärdas med ett permanent
-fakturanummer. Historikvyn och e-postutskick återstår; utskicksförslaget finns i
+fakturanummer. Historikvyn har grupperna Förfallna, Obetalda och Betalda, med manuella statusmarkeringar.
+Utfärdade PDF:er kan laddas ned eller skickas via SMTP; driftuppföljning finns i
 [INFRA_TODO.md](INFRA_TODO.md). Fakturamallen finns i [mallar/faktura-1061.pdf](mallar/faktura-1061.pdf).
 
 Mallen är en ensidig faktura med fakturametadata och referenser överst, faktureringsadress, tabell med tjänst/antal/timpris/belopp, nettobelopp, moms, avrundning och totalsumma samt säljarens adress- och betalningsuppgifter i sidfoten. PDF:ens tredjepartslogotyp och attribution ska inte återanvändas utan uttryckligt önskemål och rätt att använda dem.
@@ -47,17 +48,25 @@ En fullständig svensk faktura behöver bland annat datum, unikt löpnummer, sä
   börjar den på 1061). Löpnumret får bara höjas, aldrig sänkas eller återanvändas.
 - Spara en ögonblicksbild av kund, säljare, rader, belopp, datum och villkor så att framtida ändringar i inställningar eller tidposter inte ändrar fakturan.
 
-### Etapp 4: historik och PDF-arkiv
+### Etapp 4: historik, leverans och betalstatus (implementerat)
 
-- Visa utkast och utfärdade fakturor per kund och period; tillåt nedladdning av PDF.
-- Spara utfärdade PDF-filer i privat Cloud Storage eller välj en annan beständig, privat lagring. Cloud Runs lokala disk är inte lämplig som arkiv.
-- Registrera betalstatus manuellt som en senare liten utökning. Hantera rättelser genom kreditfaktura/ny faktura enligt fastställda krav, inte genom att redigera en utfärdad faktura.
+- Lista utfärdade fakturor i grupperna Förfallna, Obetalda och Betalda, med summa och moms per valuta. Redigerbara
+  utkast sparas ännu inte mellan sessioner.
+- Lagra utfärdade PDF-filer i PostgreSQL tillsammans med fakturaögonblicksbilden. Cloud Storage kan införas senare vid
+  behov.
+- Visa en leveransdialog efter utfärdande med separata val för nedladdning och e-post. Tillåt även leverans från
+  historiklistan.
+- Spara idempotenta utskicksförsök separat från fakturan. Skickad markeras efter SMTP-acceptans och kan också markeras
+  manuellt.
+- Hantera Betald som en manuell, reversibel status. Versionskontroll skyddar samtidiga statusändringar. Kreditfakturor
+  återstår.
 
 ### Senare etapper
 
 - Skapa fakturautkast för alla kunder med fakturerbar tid i en månad.
 - Gör kundkod obligatorisk för nya tidsregistreringar när användaren aktiverar inställningen. Behåll äldre poster utan kod och kräv hantering av dem separat.
-- Lägg till e-postutskick, bokföringsexport och eventuell företagsnivå med användarmedlemskap.
+- Lägg till leveranskvitton/studshantering, kreditfakturor, bokföringsexport och eventuell företagsnivå med
+  användarmedlemskap.
 
 ## Arkitektur och datagränser
 
@@ -77,7 +86,7 @@ Inför nya Flyway-migreringar; ändra inte redan tillämpade migreringar. Håll 
 
 ## Gränssnittets faktureringsmeny
 
-Fakturering delas i flikarna **Ny faktura**, **Ditt företag** och **Kunder**. Flikarna
+Fakturering delas i flikarna **Ny faktura**, **Fakturor**, **Ditt företag** och **Kunder**. Flikarna
 stödjer klick, vänster-/högerpil och Home/End. Ny faktura samlar
 månadsurval, fakturautkast, PDF-förhandsvisning och utfärdande. Företagsdelen innehåller
 säljaruppgifter och fakturanummerserie. Kundkortet äger visningen och inställningarna
@@ -85,9 +94,13 @@ för sina kundkoder. Fristående kodhantering ligger kvar under Kunder för att 
 aktivera/inaktivera koder; nya koder kan skapas både från kundkortet och direkt vid
 tidsregistrering.
 
-## Beslut att granska före implementation
+Veckosammanställningen i Ny faktura är dold från början och öppnas med
+**Visa tidsunderlag**. Åtgärdsknapparna använder samma typografi, höjd och mellanrum,
+med gemensamma stilar för huvudåtgärder, övriga åtgärder och borttagning.
 
-1. Ska varje kundkod ha eget timpris och tjänstebeskrivning, eller ska de ärvas från kunden med möjlighet till undantag?
-2. Ska en faktura ha en separat rad per kundkod eller summera flera koder med samma pris?
-3. Ska version ett bara skapa och ladda ned fakturor, utan e-postutskick eller betalningsregistrering?
+## Beslut och återstående frågor
+
+1. Varje kundkod har eget timpris, tjänstebeskrivning och momssats.
+2. En faktura har en månadsrad per kundkod. Raden kan justeras före utfärdande.
+3. Utfärdade fakturor kan laddas ned eller skickas med e-post, och betalning markeras manuellt.
 4. Vilka momsfall behöver stöd från start, särskilt om fakturamottagare finns utanför Sverige?

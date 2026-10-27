@@ -46,7 +46,7 @@ public class AuthenticationResource {
         String origin = http.getHeader("Origin");
         if (!"timereport".equals(http.getHeader("X-Requested-With"))
                 || (origin != null && !origin.equals(publicUrl))) {
-            throw new ForbiddenException("Begäran måste komma från Tidrapport.");
+            throw new ForbiddenException("Begäran måste komma från Tidrapporten.");
         }
         // Use the direct peer address; never trust arbitrary client X-Forwarded-For.
         if (!limiter.allow("ip:" + http.remoteAddress().host(), ipLimit)

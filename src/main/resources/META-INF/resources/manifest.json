@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Tidrapport – din arbetsdag",
-  "short_name": "Tidrapport",
+  "name": "Tidrapporten – din arbetsdag",
+  "short_name": "Tidrapporten",
   "lang": "sv",
   "start_url": "/",
   "scope": "/",

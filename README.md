@@ -1,7 +1,7 @@
-# timereport
+# Tidrapporten
 
-A Java 21 / Quarkus service for personal time reporting, invoicing inputs, and
-customer reporting. Stages 1–3 implement the domain, PostgreSQL persistence, REST
+A Java 21 / Quarkus service for personal time reporting, PDF invoicing, email
+delivery, and customer reporting. Stages 1–3 implement the domain, PostgreSQL persistence, REST
 API, and a mobile-first PWA with offline local storage and queued synchronization.
 The UI includes conflict resolution, account registration, and JWT authentication.
 Monthly reports are available. [Deploy to Cloud Run via GitHub](CLOUD_RUN.md) using
@@ -62,7 +62,7 @@ origin, including its port. The default is `http://localhost:8080`.
 ## Mobile web app, offline storage, and synchronization (stage 4)
 
 The top menu separates **Tider**, **Månadsrapport**, **Fakturering**, **Konto**, and
-**Installation**. **Fakturering** has three tabs: **Ny faktura**, **Ditt företag**, and
+**Installation**. **Fakturering** has four tabs: **Ny faktura**, **Fakturor**, **Ditt företag**, and
 **Kunder**. Use Left/Right arrows or Home/End while a tab has focus to switch panels.
 Customer-code billing assignments are shown inside each customer card; the code list
 remains there for managing active and removed codes.
@@ -161,7 +161,8 @@ Web files live under `src/main/resources/META-INF/resources/`. There are no runt
 JavaScript dependencies or frontend build step. Modules separate calculation,
 IndexedDB storage, API calls, and UI. When changing shell assets, bump
 `application-version` in `index.html` and `force-update.html`, the asset URL versions
-in those pages, and the invoicing module import in `js/app.js`. The service worker
+in those pages, the invoicing module import in `js/app.js`, and the delivery module
+import in `js/invoicing-settings.js`. The service worker
 cache version comes from the registration URL's `v` parameter. Updates activate after all existing app tabs/windows close;
 they do not clear IndexedDB or force-reload an unsaved form.
 
@@ -238,13 +239,54 @@ Choose **Fakturering → Ny faktura**, select a month and customer, then choose
 choose **Godkänn och utfärda fakturan**. The preview includes billable hours and
 amounts per customer code and ISO week, with net, VAT, and gross totals. You can edit
 descriptions, hours, rates, and VAT in the draft; those edits do not change time
-entries. Entries without a code, without a billing assignment, or assigned to another
-customer are listed separately. Only synchronized entries are used; the page warns
+entries. The weekly breakdown starts collapsed; **Visa tidsunderlag** opens it and
+**Dölj tidsunderlag** collapses it again. Entries without a code, without a billing
+assignment, or assigned to another customer remain listed separately. Only synchronized entries are used; the page warns
 if local entries for that month remain unsynchronized. A permanent number is assigned
 only when the reviewed invoice is issued. The next number is configured under
 **Ditt företag** (for example, 1061); issuing advances it automatically and it cannot
 be lowered. The issued invoice is stored as an immutable snapshot and PDF. The same
 customer cannot be invoiced twice for the same month.
+
+Invoice action buttons share the same font, text size, height, and spacing.
+Primary actions use dark green, secondary actions light green, and removal actions
+red. On narrow screens action buttons use the full available width. The PDF preview
+action is labelled **Förhandsgranska PDF**.
+
+## Invoice delivery and payment status
+
+After issuing, a delivery dialog offers independent **Ladda ner fakturan som PDF**
+and **Skicka fakturan via e-post** checkboxes. Download is selected by default;
+email must be selected explicitly. The recipient defaults to the customer's saved
+invoice email and can be changed for that submission. Closing leaves the invoice
+issued and available under **Fakturering → Fakturor**.
+
+The invoice list groups all account invoices into **Förfallna**, **Obetalda**, and
+**Betalda**, showing gross and VAT totals separately per currency. Unpaid invoices
+become overdue the day after their due date. **Betald** is a manual payment marker;
+**Skickad** is set when SMTP accepts an email and can also be marked manually for
+delivery by other means. Both are reversible; concurrent status edits return `409`
+and refresh the list. Status changes never replace the issued snapshot or PDF.
+
+Emails attach the stored PDF with sender name **Företagsnamn via Tidrapporten**.
+`INVOICE_MAIL_FROM` optionally selects a separate provider-approved sender address;
+otherwise `MAIL_FROM` is used. Reply-To uses the current company profile's email,
+falling back to the issued snapshot. The message explicitly names this contact
+address: **Vid frågor kan du skicka mejl till …**. Set it under
+**Fakturering → Ditt företag → E-post** before sending. Account
+verification/reset messages use the display name **Tidrapporten**.
+
+Each email request has a UUID `requestId`. Repeating it returns the recorded state
+without resending; reusing it for another recipient/invoice returns `409`. A lost
+HTTP response retains the ID in the dialog. Explicit resends use a new ID and ask
+for confirmation. Attempts are stored before SMTP, with `SENDING`, `SENT`, or
+`FAILED` results. There is no automatic SMTP retry: a timeout or crash can leave an
+ambiguous result. Check Brevo before an explicit resend. A pending attempt blocks
+new sends for five minutes; each invoice permits five attempts per hour.
+`SENT` means SMTP acceptance, not delivery to the inbox. Bounce processing remains
+in [INFRA_TODO.md](INFRA_TODO.md). Development/test uses Quarkus's mock mailbox,
+so no real email is sent. V8 adds delivery attempts and mutable status metadata;
+earlier migration scripts are unchanged.
 
 ## Authentication
 
@@ -327,6 +369,7 @@ this file is not loaded automatically and must never contain real credentials.
 | `SMTP_HOST`, `SMTP_PORT`               | SMTP host and STARTTLS port (default `587`)                                             |
 | `SMTP_USERNAME`, `SMTP_PASSWORD`       | SMTP credentials                                                                        |
 | `MAIL_FROM`                            | Sender address accepted by your mail provider                                           |
+| `INVOICE_MAIL_FROM`                    | Optional invoice sender address on an authenticated domain; defaults to `MAIL_FROM`     |
 
 Development/test keys are generated automatically when no keys are configured;
 production needs stable keys shared by all instances. Cloud Run should inject the
@@ -425,6 +468,9 @@ All endpoints below require
 | `PUT /api/invoicing/invoice-numbering`                     | Set or increase the next invoice number                                                                        |
 | `POST /api/invoicing/invoices`                             | Issue the reviewed month/customer invoice and return its PDF; accepts the same line adjustments as the preview |
 | `GET /api/invoicing/invoices/{number}/pdf`                 | Download the account's issued PDF again                                                                        |
+| `GET /api/invoicing/invoices`                              | List account invoices, due dates, gross/VAT amounts, status versions, and latest email attempt                 |
+| `POST /api/invoicing/invoices/{number}/email`              | Send the archived PDF; body: `recipient` and UUID `requestId`                                                  |
+| `PUT /api/invoicing/invoices/{number}/status`              | Set manual `sent`/`paid` booleans with `expectedVersion`; returns updated status                               |
 | `PUT /api/customer-codes/{code}`                           | Create, activate, or deactivate a customer code                                                                |
 | `GET /api/customer-codes`                                  | List codes, including inactive ones                                                                            |
 | `PUT /api/time-entries/{uuid}`                             | Create or replace a time entry                                                                                 |

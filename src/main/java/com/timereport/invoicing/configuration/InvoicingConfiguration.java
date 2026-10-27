@@ -1,22 +1,22 @@
 package com.timereport.invoicing.configuration;
 
-import com.timereport.invoicing.application.port.in.InvoicingSettings;
-import com.timereport.invoicing.application.port.out.InvoicingSettingsRepository;
-import com.timereport.invoicing.application.service.InvoicingSettingsService;
-import com.timereport.invoicing.application.port.in.InvoiceDrafts;
-import com.timereport.invoicing.application.service.InvoiceDraftService;
-import com.timereport.invoicing.application.port.in.InvoiceIssuance;
-import com.timereport.invoicing.application.port.in.InvoiceNumberingSettings;
-import com.timereport.invoicing.application.port.out.InvoicePdfGenerator;
-import com.timereport.invoicing.application.port.out.InvoiceRepository;
-import com.timereport.invoicing.application.port.out.InvoiceTransaction;
-import com.timereport.invoicing.application.service.InvoiceIssuanceService;
-import com.timereport.invoicing.application.service.InvoiceNumberingService;
+import com.timereport.invoicing.application.port.in.*;
+import com.timereport.invoicing.application.port.out.*;
+import com.timereport.invoicing.application.service.*;
 import com.timereport.timeentry.application.port.in.TimeEntries;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Singleton;
 
+import java.time.Clock;
+
 public class InvoicingConfiguration {
+    @Produces
+    @Singleton
+    public IssuedInvoices issuedInvoices(InvoiceRepository invoices, InvoiceDeliveryRepository deliveries,
+                                         InvoiceStatusRepository statuses, InvoiceMail mail, InvoicingSettingsRepository settings) {
+        return new IssuedInvoiceService(invoices, deliveries, statuses, mail, settings, Clock.systemUTC());
+    }
+
     @Produces
     @Singleton
     public InvoicingSettings invoicingSettings(InvoicingSettingsRepository repository) {

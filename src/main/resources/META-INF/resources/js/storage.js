@@ -31,7 +31,7 @@ export function openStorage() {
             resolve(db);
         };
         request.onerror = () => reject(request.error);
-        request.onblocked = () => reject(new Error('Stäng andra flikar med Tidrapport och öppna sidan igen.'));
+        request.onblocked = () => reject(new Error('Stäng andra flikar med Tidrapporten och öppna sidan igen.'));
     });
     return database;
 }

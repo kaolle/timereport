@@ -21,7 +21,7 @@ variera. För tidig aktivering kan stoppa registrerings- och lösenordsåterstä
 6. Kontrollera att SMTP-försök från en otillåten IP blockeras och dokumentera återställning
    genom att tillfälligt stänga av blockeringen om legitima utskick stoppas.
 
-Använd under tiden en separat SMTP-nyckel för Tidrapport och lagra den i Secret Manager
+Använd under tiden en separat SMTP-nyckel för Tidrapporten och lagra den i Secret Manager
 vid molndrift.
 
 **Referenser:**
@@ -48,20 +48,26 @@ bakom samma proxy. Aktivera inte generell tillit till godtyckliga `X-Forwarded-F
 
 ## Skicka utfärdade fakturor via e-post
 
-- [ ] Utforma och implementera utskick av utfärdade fakturor som PDF-bilaga.
+Implementerat med lagrade utskicksförsök och separata Skickad-/Betald-markeringar.
+SENT betyder att SMTP-servern accepterat mejlet. Automatisk hantering av studsar och
+leveranskvitton återstår. `INVOICE_MAIL_FROM` kan anges för separat fakturaavsändare;
+standard är befintlig `MAIL_FROM`. Ingen automatisk SMTP-omsändning sker vid osäkert
+resultat; användaren bekräftar ett nytt försök efter kontroll i Brevo.
+
+- [x] Utforma och implementera utskick av utfärdade fakturor som PDF-bilaga.
 - [ ] Använd en avsändare på den autentiserade domänen, till exempel
-  `fakturor@potatisblomman.se`, med visningsnamnet **Företagsnamn via Tidrapport**.
-- [ ] Sätt kundens faktura-e-post som mottagare och företagets egen fakturaadress som
+  `fakturor@potatisblomman.se`, med visningsnamnet **Företagsnamn via Tidrapporten**.
+- [x] Sätt kundens faktura-e-post som mottagare och företagets egen fakturaadress som
   `Reply-To`, så svar inte går till en obevakad no-reply-adress.
-- [ ] Behåll en gemensam avsändaradress för systemmejl, exempelvis
+- [x] Behåll en gemensam avsändaradress för systemmejl, exempelvis
   `Tidrapporten <no-reply@potatisblomman.se>`. Undvik att presentera tenantföretag som
   om de skickar från sin egen domän när From-adressen i själva verket tillhör
   `potatisblomman.se`.
-- [ ] Hämta PDF:en från den utfärdade, oföränderliga fakturan. Skicka aldrig ett
+- [x] Hämta PDF:en från den utfärdade, oföränderliga fakturan. Skicka aldrig ett
   redigerbart utkast som faktura.
-- [ ] Lägg till återförsök och idempotens för SMTP-fel; fakturans utfärdande ska inte
+- [x] Lägg till explicita återförsök och idempotens för SMTP-fel; fakturans utfärdande ska inte
   skapa en ny faktura vid ett misslyckat eller upprepat mejlutskick.
-- [ ] Spara leveransstatus och fel utan att logga SMTP-nyckel, fakturans känsliga
+- [x] Spara leveransstatus och fel utan att logga SMTP-nyckel, fakturans känsliga
   innehåll eller autentiseringslänkar.
 - [ ] Verifiera SPF, DKIM och DMARC för avsändardomänen samt testa leverans, bilaga,
   Reply-To, studs och återförsök.
@@ -69,7 +75,7 @@ bakom samma proxy. Aktivera inte generell tillit till godtyckliga `X-Forwarded-F
 **Avsändarprincip:** SMTP tillåter visningsnamn och adress per meddelande, men ett
 tenantföretagsnamn tillsammans med en adress på `potatisblomman.se` kan ge mottagaren
 intrycket att företaget självt äger den adressen. Visa därför hellre
-**Företagsnamn via Tidrapport** och använd företagets adress som `Reply-To`. Om framtida
+**Företagsnamn via Tidrapporten** och använd företagets adress som `Reply-To`. Om framtida
 företagskunder ska skicka från egna domäner krävs verifiering och autentisering av
 respektive domän innan den används som From-adress.
 

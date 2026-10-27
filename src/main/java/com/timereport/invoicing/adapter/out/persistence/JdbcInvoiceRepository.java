@@ -5,13 +5,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.timereport.authentication.application.port.in.AccountIdentity;
 import com.timereport.invoicing.application.port.out.InvoiceRepository;
 import com.timereport.invoicing.application.service.InvoicingConflict;
+import com.timereport.invoicing.domain.InvoiceStatus;
+import com.timereport.invoicing.domain.InvoiceSummary;
 import com.timereport.invoicing.domain.IssuedInvoice;
+import com.timereport.invoicing.domain.IssuedInvoiceDocument;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 
 import javax.sql.DataSource;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 @ApplicationScoped
@@ -125,6 +131,52 @@ public class JdbcInvoiceRepository implements InvoiceRepository {
             return objectMapper.writeValueAsString(invoice);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Fakturaögonblicksbilden kunde inte sparas.", e);
+        }
+    }
+
+    @Override
+    public Optional<IssuedInvoiceDocument> findDocument(int invoiceNumber) {
+        try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(
+                "SELECT snapshot,pdf FROM issued_invoices WHERE account_id=? AND invoice_number=?")) {
+            statement.setObject(1, identity.accountId());
+            statement.setInt(2, invoiceNumber);
+            try (var result = statement.executeQuery()) {
+                return result.next() ? Optional.of(new IssuedInvoiceDocument(
+                        objectMapper.readValue(result.getString("snapshot"), IssuedInvoice.class), result.getBytes("pdf"))) : Optional.empty();
+            }
+        } catch (SQLException error) {
+            throw databaseError(error);
+        } catch (JsonProcessingException error) {
+            throw new IllegalStateException("Fakturaögonblicksbilden kunde inte läsas.", error);
+        }
+    }
+
+    @Override
+    public List<InvoiceSummary> list() {
+        String sql = "SELECT i.invoice_number,i.period_month,i.issued_at,i.due_date,"
+                + "i.snapshot->'customer'->>'name' AS customer_name,i.snapshot->'customer'->>'invoiceEmail' AS invoice_email,"
+                + "(i.snapshot->>'totalAmount')::numeric AS total_amount,(i.snapshot->>'vatAmount')::numeric AS vat_amount,"
+                + "i.snapshot->'seller'->>'currencyCode' AS currency_code,s.sent_at,s.paid_at,COALESCE(s.version,0) AS status_version,"
+                + "d.id,d.recipient,d.state,d.requested_at,d.completed_at "
+                + "FROM issued_invoices i LEFT JOIN invoice_status s ON s.account_id=i.account_id AND s.invoice_number=i.invoice_number "
+                + "LEFT JOIN LATERAL (SELECT * FROM invoice_deliveries d WHERE d.account_id=i.account_id AND d.invoice_number=i.invoice_number ORDER BY requested_at DESC,id DESC LIMIT 1) d ON true "
+                + "WHERE i.account_id=? ORDER BY i.invoice_number DESC";
+        try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, identity.accountId());
+            try (var result = statement.executeQuery()) {
+                var summaries = new ArrayList<InvoiceSummary>();
+                while (result.next())
+                    summaries.add(InvoiceSummary.builder().invoiceNumber(result.getInt("invoice_number"))
+                            .month(result.getString("period_month")).customerName(result.getString("customer_name"))
+                            .invoiceEmail(result.getString("invoice_email")).issuedAt(result.getTimestamp("issued_at").toInstant())
+                            .dueDate(result.getObject("due_date", LocalDate.class)).totalAmount(result.getBigDecimal("total_amount"))
+                            .vatAmount(result.getBigDecimal("vat_amount")).currencyCode(result.getString("currency_code"))
+                            .status(new InvoiceStatus(JdbcInvoiceDeliveryRepository.instant(result, "sent_at"), JdbcInvoiceDeliveryRepository.instant(result, "paid_at"), result.getLong("status_version")))
+                            .lastDelivery(result.getObject("id") == null ? null : JdbcInvoiceDeliveryRepository.read(result)).build());
+                return List.copyOf(summaries);
+            }
+        } catch (SQLException error) {
+            throw databaseError(error);
         }
     }
 

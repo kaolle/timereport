@@ -1,4 +1,4 @@
-# Tidrapport i Cloud Run via GitHub
+# Tidrapporten i Cloud Run via GitHub
 
 Samma byggupplägg som WeatherService: Cloud Build kör tester, Google Buildpacks
 bygger en Java-container och Cloud Run uppdateras med den nya bilden. Här används
@@ -7,7 +7,7 @@ Ingen GitHub Actions-workflow eller Dockerfile behövs för detta flöde.
 
 ## 1. Förbered Google Cloud
 
-Välj projektet där Tidrapport ska köras. Aktivera **Cloud Run Admin API**,
+Välj projektet där Tidrapporten ska köras. Aktivera **Cloud Run Admin API**,
 **Cloud Build API**, **Artifact Registry API** och **Secret Manager API**.
 
 Skapa ett **Docker-repository** i Artifact Registry:
@@ -184,3 +184,13 @@ backuper och klient-IP bakom Cloud Runs proxy.
 - [Byggvariabler](https://docs.cloud.google.com/docs/buildpacks/service-specific-configs)
 - [Secret Manager i Cloud Run](https://docs.cloud.google.com/run/docs/configuring/services/secrets)
 - [Neon-anslutningar](https://neon.com/docs/get-started/connect-neon)
+
+## Fakturamejl
+
+Fakturor använder samma Brevo SMTP-anslutning som kontomejl. Ange vid behov
+`INVOICE_MAIL_FROM=fakturor@potatisblomman.se` som vanlig miljövariabel på Cloud Run;
+adressen ska tillhöra en autentiserad domän och godkännas av Brevo. Utan variabeln
+används `MAIL_FROM`. Fakturamejl visas som **Företagsnamn via Tidrapporten**, med
+företagets e-post under Ditt företag som Reply-To. Inga nya SMTP-nycklar krävs.
+Flyway V8 lägger till utskicks- och betalstatus utan att ändra utfärdade fakturor.
+SENT i appen avser SMTP-acceptans; kontrollera leverans och studsar i Brevo.

@@ -1,6 +1,7 @@
 import {authenticatedFetch} from './auth.js';
 import {formatMinutes} from './domain.js';
 import {snapshot} from './storage.js';
+import {configureInvoiceDelivery} from './invoice-delivery.js?v=49';
 
 const $ = id => document.getElementById(id);
 let busy = false;
@@ -10,6 +11,7 @@ let defaultVat = '25';
 let currencyCode = 'SEK';
 let previewUrl = null;
 let previewReadySignature = null;
+let invoiceDelivery;
 
 function showInvoiceView(view) {
     document.querySelectorAll('[data-invoice-panel]').forEach(panel => {
@@ -21,11 +23,12 @@ function showInvoiceView(view) {
         button.tabIndex = selected ? 0 : -1;
     });
     if (view === 'customers') window.dispatchEvent(new Event('billing-customer-codes-opened'));
+    if (view === 'history') void invoiceDelivery.refresh();
 }
 
-async function request(path, method = 'GET', body) {
+async function request(path, method = 'GET', body, timeout = 10000) {
     const response = await authenticatedFetch(path, {
-        method, cache: 'no-store', signal: AbortSignal.timeout(10000),
+        method, cache: 'no-store', signal: AbortSignal.timeout(timeout),
         headers: body === undefined ? {} : {'Content-Type': 'application/json'},
         body: body === undefined ? undefined : JSON.stringify(body)
     });
@@ -116,7 +119,7 @@ function renderDraft(draft, pendingCount = 0) {
     summary.append(node('p', 'eyebrow', `UTKAST · ${draft.customerName} · ${draft.month}`),
         node('strong', '', `${formatMinutes(draft.workedMinutes)} synkroniserad tid i underlaget`),
         node('p', '', 'Fakturans slutliga timmar och belopp räknas om efter dina ändringar och visas i PDF-förhandsvisningen.'),
-        node('p', 'field-help', 'Veckosammanställningen nedan är tidsunderlaget före fakturaändringar.'));
+        node('p', 'field-help', 'Visa tidsunderlag öppnar veckosammanställningen före fakturaändringar.'));
     result.append(summary);
     const editor = node('section', 'invoice-adjustment-section');
     editor.append(node('h4', '', 'Fakturarader · redigera utkastet'));
@@ -160,7 +163,7 @@ function renderDraft(draft, pendingCount = 0) {
     result.append(editor);
     const controls = node('div', 'invoice-draft-controls');
     if (invoiceLines.length > 0) {
-        const previewButton = node('button', 'secondary-button', 'Förhandsgranska faktura som PDF');
+        const previewButton = node('button', 'secondary-button', 'Förhandsgranska PDF');
         previewButton.type = 'button';
         previewButton.disabled = pendingCount > 0;
         previewButton.addEventListener('click', () => void previewDraft(draft, previewButton));
@@ -188,7 +191,26 @@ function renderDraft(draft, pendingCount = 0) {
     preview.append(open, frame);
     result.append(preview);
     for (const input of editorList.querySelectorAll('input')) input.addEventListener('input', invalidatePreview);
-    result.append(node('h4', 'invoice-source-heading', 'Tidsunderlag per vecka'));
+    const source = node('section');
+    source.id = 'invoice-source-panel';
+    source.hidden = true;
+    source.setAttribute('aria-labelledby', 'invoice-source-title');
+    const sourceTitle = node('h4', 'invoice-source-heading', 'Tidsunderlag per vecka');
+    sourceTitle.id = 'invoice-source-title';
+    source.append(sourceTitle);
+    const sourceControls = node('div', 'invoice-draft-controls');
+    const toggleSource = node('button', 'secondary-button', 'Visa tidsunderlag');
+    toggleSource.id = 'invoice-source-toggle';
+    toggleSource.type = 'button';
+    toggleSource.setAttribute('aria-controls', source.id);
+    toggleSource.setAttribute('aria-expanded', 'false');
+    toggleSource.addEventListener('click', () => {
+        source.hidden = !source.hidden;
+        toggleSource.setAttribute('aria-expanded', String(!source.hidden));
+        toggleSource.textContent = source.hidden ? 'Visa tidsunderlag' : 'Dölj tidsunderlag';
+    });
+    sourceControls.append(toggleSource);
+    result.append(sourceControls, source);
     for (const week of draft.weeks) {
         const section = node('section', 'invoice-draft-week');
         section.append(node('h4', '', `Vecka ${week.weekNumber} (${week.weekYear})`));
@@ -218,7 +240,11 @@ function renderDraft(draft, pendingCount = 0) {
         const label = node('th', '', 'Veckans summa'); label.scope = 'row';
         total.append(label, node('td', '', formatMinutes(week.workedMinutes)), node('td'),
             node('td', '', money(week.netAmount)), node('td', '', money(week.vatAmount)), node('td', '', money(week.totalAmount)));
-        foot.append(total); table.append(foot); scroll.append(table); section.append(scroll); result.append(section);
+        foot.append(total);
+        table.append(foot);
+        scroll.append(table);
+        section.append(scroll);
+        source.append(section);
     }
     if (draft.unallocated.length) {
         const section = node('section', 'invoice-unallocated');
@@ -318,19 +344,21 @@ async function issueDraft(draft, button) {
             throw new Error(body?.message || `Fakturan kunde inte utfärdas (${response.status}).`);
         }
         const pdf = await response.blob();
-        const url = URL.createObjectURL(pdf);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `Faktura-${response.headers.get('X-Invoice-Number') || 'utkast'}.pdf`;
-        document.body.append(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-        const number = response.headers.get('X-Invoice-Number');
-        status('invoice-draft-status', `Faktura ${number} är utfärdad och PDF-filen har laddats ned. Fakturan kan hämtas igen via API:t om nedladdningen misslyckades.`);
+        const number = Number(response.headers.get('X-Invoice-Number'));
+        status('invoice-draft-status', `Faktura ${number} är utfärdad. Välj hur den ska levereras. Den finns också under Fakturor.`);
+        for (const control of $('invoice-draft-result').querySelectorAll('input,button:not(#invoice-source-toggle)')) control.disabled = true;
         button.remove();
-        const numbering = await request('/api/invoicing/invoice-numbering');
-        $('invoice-next-number').value = numbering.nextNumber;
+        const recipient = customers.find(customer => customer.id === draft.customerId)?.invoiceEmail || '';
+        const deliver = node('button', 'primary-button', `Leverera faktura ${number}`);
+        deliver.type = 'button';
+        deliver.addEventListener('click', () => invoiceDelivery.open({number, recipient, pdf}));
+        $('invoice-draft-result').prepend(deliver);
+        invoiceDelivery.open({number, recipient, pdf});
+        void request('/api/invoicing/invoice-numbering').then(result => {
+            $('invoice-next-number').value = result.nextNumber;
+        }).catch(() => {
+        });
+        void invoiceDelivery.refresh();
     } catch (error) {
         status('invoice-draft-status', error.message || 'Fakturan kunde inte utfärdas.');
         button.disabled = false;
@@ -655,6 +683,7 @@ async function loadSettings() {
 }
 
 export function configureInvoicingSettings() {
+    invoiceDelivery = configureInvoiceDelivery({request});
     const now = new Date();
     $('invoice-draft-month').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     $('invoice-draft-form').addEventListener('submit', loadDraft);

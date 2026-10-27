@@ -1,5 +1,5 @@
 import {configureMonthlyReport} from './report.js';
-import {configureInvoicingSettings} from './invoicing-settings.js?v=51';
+import {configureInvoicingSettings} from './invoicing-settings.js?v=52';
 import {configureAccountTools, logout, requireAccount} from './auth.js';
 import {formatMinutes, intervalsOverlap, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
 import {

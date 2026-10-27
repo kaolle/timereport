@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 const properties = readFileSync('src/main/resources/application.properties', 'utf8');
 const csp = properties.match(/^quarkus\.http\.header\."Content-Security-Policy"\.value=(.+)$/m)[1];
 const customerId = '55555555-5555-4555-8555-555555555555';
+const missingProfileMessage = 'Du har inte registrerat ditt företag. Fyll i och spara uppgifterna under Ditt företag först.';
 const line = {
     customerCode: 'FAIR1234', description: 'Konsultarbete', workedMinutes: 90,
     hourlyRate: 1000, vatPercent: 25, netAmount: 1500, vatAmount: 375, totalAmount: 1875
@@ -11,6 +12,11 @@ const line = {
 const draft = {
     month: '2026-10', customerId, customerName: 'Kunden AB', ...line,
     weeks: [{weekNumber: 40, weekYear: 2026, ...line, lines: [line]}], unallocated: []
+};
+const sellerProfile = {
+    sellerName: 'Testföretaget AB', addressLine: 'Testgatan 1', postalCode: '12345', city: 'Stockholm',
+    country: 'Sverige', organizationNumber: '', vatNumber: '', bankgiro: '', email: 'company@example.test',
+    currencyCode: 'SEK', paymentTermsDays: 30, defaultVatPercent: 25, fTaxRegistered: true
 };
 
 // A valid, single-page PDF so Chromium exercises its PDF navigation under the real CSP.
@@ -32,7 +38,7 @@ function samplePdf() {
     return Buffer.from(`${pdf}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`);
 }
 
-async function setup(page, context) {
+async function setup(page, context, {profile = sellerProfile} = {}) {
     const state = {
         previews: [],
         issued: 0,
@@ -42,7 +48,9 @@ async function setup(page, context) {
         deliveries: new Map(),
         mailSends: 0,
         loseEmailResponse: false,
-        failEmail: false
+        failEmail: false,
+        profile,
+        waitForPreview: null
     };
     await context.route('http://127.0.0.1:4173/', async route => {
         const response = await route.fetch();
@@ -62,7 +70,10 @@ async function setup(page, context) {
                 account: {accountId: '44444444-4444-4444-8444-444444444444', email: 'preview@example.test'}
             }
         });
-        if (path === '/api/invoicing/profile') return route.fulfill({status: 204});
+        if (path === '/api/invoicing/profile') {
+            if (route.request().method() === 'PUT') state.profile = route.request().postDataJSON();
+            return route.fulfill(state.profile ? {json: state.profile} : {status: 204});
+        }
         if (path === '/api/invoicing/customers') return route.fulfill({
             json: [{
                 id: customerId,
@@ -77,6 +88,10 @@ async function setup(page, context) {
         if (path === '/api/invoicing/draft') return route.fulfill({json: draft});
         if (path === '/api/invoicing/draft/pdf') {
             state.previews.push(route.request().postDataJSON());
+            if (state.waitForPreview) await state.waitForPreview;
+            if (!state.profile) return route.fulfill({
+                status: 400, json: {code: 'INVALID_INPUT', message: missingProfileMessage}
+            });
             if (state.failPreview) return route.fulfill({
                 status: 503,
                 json: {message: 'PDF kunde inte skapas. Försök igen.'}
@@ -389,12 +404,86 @@ test('a failed preview shows its error and can be retried', async ({page, contex
     const preview = page.getByRole('button', {name: 'Förhandsgranska PDF', exact: true});
     await preview.click();
     await expect(page.locator('#invoice-draft-status')).toContainText('PDF kunde inte skapas. Försök igen.');
+    await expect(page.locator('#invoice-draft-status')).toBeFocused();
+    await expect(page.locator('#invoice-draft-status')).toBeInViewport();
     await expect(preview).toBeEnabled();
     await expect(page.locator('#invoice-issue-button')).toBeDisabled();
     state.failPreview = false;
     await preview.click();
     await expect(page.locator('#invoice-pdf-preview')).toBeVisible();
     await expect(page.locator('#invoice-issue-button')).toBeEnabled();
+});
+
+test('missing company details guide setup without losing edited invoice rows', async ({page, context}, testInfo) => {
+    const state = await setup(page, context, {profile: null});
+    const description = page.locator('.invoice-adjustment-card [name="description"]');
+    await description.fill('Justerad beskrivning');
+    await page.getByRole('button', {name: 'Förhandsgranska PDF', exact: true}).click();
+    await expect(page.locator('#invoice-draft-status')).toHaveText(missingProfileMessage);
+    await expect(page.locator('#invoice-draft-status')).toBeInViewport();
+    await expect(page.locator('#invoice-profile-required')).toBeVisible();
+    await expect(page.locator('#invoice-issue-button')).toBeDisabled();
+    expect(state.previews).toHaveLength(0);
+    expect(state.issued).toBe(0);
+    await page.screenshot({path: testInfo.outputPath('company-profile-required.png')});
+    await page.getByRole('button', {name: 'Fyll i Ditt företag', exact: true}).click();
+    await expect(page.getByRole('tab', {name: 'Ditt företag', exact: true})).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#seller-name')).toBeFocused();
+    await page.locator('#seller-name').fill('Testföretaget AB');
+    await page.locator('#seller-address').fill('Testgatan 1');
+    await page.locator('#seller-postal').fill('12345');
+    await page.locator('#seller-city').fill('Stockholm');
+    await page.getByRole('button', {name: 'Spara fakturauppgifter', exact: true}).click();
+    await expect(page.locator('#seller-profile-status')).toContainText('har sparats');
+    await page.getByRole('tab', {name: 'Ny faktura', exact: true}).click();
+    await expect(description).toHaveValue('Justerad beskrivning');
+    await expect(page.locator('#invoice-profile-required')).toBeHidden();
+    await page.getByRole('button', {name: 'Förhandsgranska PDF', exact: true}).click();
+    await expect(page.locator('#invoice-pdf-preview')).toBeVisible();
+    expect(state.previews).toHaveLength(1);
+    expect(state.previews[0].adjustments[0].description).toBe('Justerad beskrivning');
+});
+
+test('a production validation response is visible beside the preview controls', async ({page, context}) => {
+    const state = await setup(page, context);
+    state.profile = null;
+    await page.getByRole('button', {name: 'Förhandsgranska PDF', exact: true}).click();
+    const feedback = page.locator('#invoice-draft-status');
+    await expect(feedback).toHaveText(missingProfileMessage);
+    await expect(feedback).toBeFocused();
+    await expect(feedback).toBeInViewport();
+    await expect(page.locator('#invoice-issue-button')).toBeDisabled();
+    await expect(page.locator('#invoice-draft-result #invoice-draft-status')).toHaveCount(1);
+});
+
+test('changing saved company details requires a new invoice preview', async ({page, context}) => {
+    await setup(page, context);
+    await page.getByRole('button', {name: 'Förhandsgranska PDF', exact: true}).click();
+    await expect(page.locator('#invoice-issue-button')).toBeEnabled();
+    await page.getByRole('tab', {name: 'Ditt företag', exact: true}).click();
+    await page.locator('#seller-name').fill('Nytt företagsnamn AB');
+    await page.getByRole('button', {name: 'Spara fakturauppgifter', exact: true}).click();
+    await expect(page.locator('#seller-profile-status')).toContainText('har sparats');
+    await page.getByRole('tab', {name: 'Ny faktura', exact: true}).click();
+    await expect(page.locator('#invoice-issue-button')).toBeDisabled();
+    await expect(page.locator('#invoice-pdf-preview')).toBeHidden();
+});
+
+test('company details saved while a preview is loading invalidate its result', async ({page, context}) => {
+    const state = await setup(page, context);
+    let release;
+    state.waitForPreview = new Promise(resolve => { release = resolve; });
+    await page.getByRole('button', {name: 'Förhandsgranska PDF', exact: true}).click();
+    await expect.poll(() => state.previews.length).toBe(1);
+    await page.getByRole('tab', {name: 'Ditt företag', exact: true}).click();
+    await page.locator('#seller-name').fill('Uppdaterat företag AB');
+    await page.getByRole('button', {name: 'Spara fakturauppgifter', exact: true}).click();
+    await expect(page.locator('#seller-profile-status')).toContainText('har sparats');
+    await page.getByRole('tab', {name: 'Ny faktura', exact: true}).click();
+    release();
+    await expect(page.locator('#invoice-draft-status')).toContainText('företagsuppgifterna ändrades');
+    await expect(page.locator('#invoice-issue-button')).toBeDisabled();
+    await expect(page.locator('#invoice-pdf-preview')).toBeHidden();
 });
 
 test('online reload replaces an outdated invoicing module in the service worker cache', async ({page, context}) => {

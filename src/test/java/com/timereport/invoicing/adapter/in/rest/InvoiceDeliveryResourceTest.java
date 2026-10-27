@@ -31,12 +31,6 @@ class InvoiceDeliveryResourceTest {
         var owner = auth.login();
         var other = auth.login();
         String token = owner.accessToken();
-        given().auth().oauth2(token).contentType("application/json").body(Map.ofEntries(
-                        Map.entry("sellerName", "Example AB"), Map.entry("addressLine", "Testgatan 1"), Map.entry("postalCode", "12345"),
-                        Map.entry("city", "Stockholm"), Map.entry("country", "Sverige"), Map.entry("currencyCode", "SEK"),
-                        Map.entry("email", "company@example.test"), Map.entry("paymentTermsDays", 30),
-                        Map.entry("defaultVatPercent", 25), Map.entry("fTaxRegistered", true)))
-                .put("/api/invoicing/profile").then().statusCode(200);
         String recipient = UUID.randomUUID() + "@example.test";
         String contact = UUID.randomUUID() + "@example.test";
         String customer = given().auth().oauth2(token).contentType("application/json").body(Map.of(
@@ -52,6 +46,20 @@ class InvoiceDeliveryResourceTest {
         given().auth().oauth2(token).contentType("application/json").body(Map.of("date", "2026-01-05", "start", "08:00",
                         "end", "17:00", "deductedMinutes", 30, "customerCode", code, "comment", "Arbete", "expectedVersion", 0))
                 .put("/api/time-entries/" + UUID.randomUUID()).then().statusCode(200);
+        for (String endpoint : List.of("/api/invoicing/draft/pdf", "/api/invoicing/invoices")) {
+            given().auth().oauth2(token).contentType("application/json").body(Map.of("month", "2026-01", "customerId", customer))
+                    .post(endpoint).then().statusCode(400).contentType("application/json")
+                    .body("code", equalTo("INVALID_INPUT"), "message", equalTo(
+                            "Du har inte registrerat ditt företag. Fyll i och spara uppgifterna under Ditt företag först."));
+        }
+        given().auth().oauth2(token).get("/api/invoicing/invoices").then().statusCode(200).body("size()", equalTo(0));
+        given().auth().oauth2(token).get("/api/invoicing/invoice-numbering").then().statusCode(200).body("nextNumber", equalTo(1));
+        given().auth().oauth2(token).contentType("application/json").body(Map.ofEntries(
+                        Map.entry("sellerName", "Example AB"), Map.entry("addressLine", "Testgatan 1"), Map.entry("postalCode", "12345"),
+                        Map.entry("city", "Stockholm"), Map.entry("country", "Sverige"), Map.entry("currencyCode", "SEK"),
+                        Map.entry("email", "company@example.test"), Map.entry("paymentTermsDays", 30),
+                        Map.entry("defaultVatPercent", 25), Map.entry("fTaxRegistered", true)))
+                .put("/api/invoicing/profile").then().statusCode(200);
         var issued = given().auth().oauth2(token).contentType("application/json").body(Map.of("month", "2026-01", "customerId", customer))
                 .post("/api/invoicing/invoices").then().statusCode(200).extract().response();
         String number = issued.header("X-Invoice-Number");

@@ -242,6 +242,13 @@ after the label has been cached. A customer code is required for a time entry to
 included in an invoice. Unassigned codes remain available for time reporting and
 are excluded from a customer's invoice draft.
 
+Save the seller details with **Spara fakturauppgifter** before previewing or issuing
+an invoice. These settings belong to the signed-in account and database; local
+development settings are not automatically copied to production. If the profile
+is missing, the draft links to **Ditt företag** and keeps edited invoice rows when
+switching tabs. Preview errors appear beside the action buttons and receive focus.
+Changing saved company details requires a new PDF preview before issuing.
+
 ## Ny faktura (etapp 2)
 
 Choose **Fakturering → Ny faktura**, select a month and customer, then choose

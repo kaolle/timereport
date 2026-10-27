@@ -1,7 +1,7 @@
 import {authenticatedFetch} from './auth.js';
 import {formatMinutes} from './domain.js';
 import {snapshot} from './storage.js';
-import {configureInvoiceDelivery} from './invoice-delivery.js?v=51';
+import {configureInvoiceDelivery} from './invoice-delivery.js?v=52';
 
 const $ = id => document.getElementById(id);
 let busy = false;
@@ -12,6 +12,9 @@ let currencyCode = 'SEK';
 let previewUrl = null;
 let previewReadySignature = null;
 let invoiceDelivery;
+let sellerProfile;
+let profileLoaded = false;
+const missingProfileMessage = 'Du har inte registrerat ditt företag. Fyll i och spara uppgifterna under Ditt företag först.';
 
 function showInvoiceView(view) {
     document.querySelectorAll('[data-invoice-panel]').forEach(panel => {
@@ -41,6 +44,21 @@ async function request(path, method = 'GET', body, timeout = 10000) {
 
 function status(id, value) {
     $(id).textContent = value || '';
+    if (id === 'invoice-draft-status') $(id).className = 'field-help';
+}
+
+function draftError(message) {
+    status('invoice-draft-status', message);
+    const feedback = $('invoice-draft-status');
+    feedback.className = 'error-box';
+    if (!$('invoice-panel-new').hidden) {
+        feedback.focus();
+        feedback.scrollIntoView({block: 'nearest'});
+    }
+}
+
+function missingProfile() {
+    return profileLoaded && !sellerProfile;
 }
 
 function node(tag, className, value) {
@@ -113,7 +131,9 @@ function renderDraft(draft, pendingCount = 0) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = null;
     const result = $('invoice-draft-result');
-    result.replaceChildren();
+    // Keep the same live status element when rebuilding the editor, near its actions.
+    const feedback = $('invoice-draft-status');
+    result.replaceChildren(feedback);
     const invoiceLines = monthlyInvoiceLines(draft);
     const summary = node('div', 'invoice-draft-summary');
     summary.append(node('p', 'eyebrow', `UTKAST · ${draft.customerName} · ${draft.month}`),
@@ -177,7 +197,18 @@ function renderDraft(draft, pendingCount = 0) {
     } else {
         controls.append(node('p', 'field-help', 'Det finns inga fakturarader för vald kund och månad. Kontrollera kundkodernas kopplingar.'));
     }
-    result.append(controls);
+    const profileNotice = node('div', 'notice invoice-profile-required');
+    profileNotice.id = 'invoice-profile-required';
+    profileNotice.hidden = !missingProfile();
+    profileNotice.append(node('p', '', `${missingProfileMessage} Dina ändrade fakturarader finns kvar när du byter flik.`));
+    const editProfile = node('button', 'secondary-button', 'Fyll i Ditt företag');
+    editProfile.type = 'button';
+    editProfile.addEventListener('click', () => {
+        showInvoiceView('company');
+        ($('seller-profile-form').querySelector('input:invalid') || $('seller-name')).focus();
+    });
+    profileNotice.append(editProfile);
+    result.append(profileNotice, controls, feedback);
     const preview = node('section', 'invoice-pdf-preview');
     preview.id = 'invoice-pdf-preview';
     preview.hidden = true;
@@ -258,6 +289,10 @@ function renderDraft(draft, pendingCount = 0) {
 }
 
 async function previewDraft(draft, button) {
+    if (missingProfile()) {
+        draftError(missingProfileMessage);
+        return;
+    }
     if (await pendingLocalCount(draft.month)) {
         status('invoice-draft-status', 'Synka månadens lokala registreringar och hämta underlaget igen innan du förhandsgranskar fakturan.');
         button.disabled = true;
@@ -267,11 +302,12 @@ async function previewDraft(draft, button) {
     try {
         payload = invoicePayload(draft);
     } catch (error) {
-        status('invoice-draft-status', error.message);
+        draftError(error.message);
         return;
     }
     button.disabled = true;
     status('invoice-draft-status', 'Skapar PDF-förhandsvisning av utkastet …');
+    const profileSignature = JSON.stringify(sellerProfile);
     try {
         const response = await authenticatedFetch('/api/invoicing/draft/pdf', {
             method: 'POST', cache: 'no-store', timeoutMs: 30000,
@@ -291,16 +327,17 @@ async function previewDraft(draft, button) {
         $('invoice-pdf-frame').src = previewUrl;
         $('invoice-pdf-open').href = previewUrl;
         $('invoice-pdf-preview').hidden = false;
-        if (JSON.stringify(invoicePayload(draft)) !== JSON.stringify(payload)) {
+        if (JSON.stringify(invoicePayload(draft)) !== JSON.stringify(payload)
+            || JSON.stringify(sellerProfile) !== profileSignature) {
             invalidatePreview();
-            throw new Error('Utkastet ändrades medan PDF-förhandsvisningen skapades. Förhandsgranska igen.');
+            throw new Error('Utkastet eller företagsuppgifterna ändrades medan PDF-förhandsvisningen skapades. Förhandsgranska igen.');
         }
         previewReadySignature = JSON.stringify(payload);
         const issue = $('invoice-issue-button');
         if (issue) issue.disabled = false;
         status('invoice-draft-status', 'Granska PDF-förhandsvisningen. Utkastet får inget permanent fakturanummer förrän du utfärdar det.');
     } catch (error) {
-        status('invoice-draft-status', error.message || 'Förhandsvisningen kunde inte skapas.');
+        draftError(error.message || 'Förhandsvisningen kunde inte skapas.');
     } finally {
         button.disabled = false;
     }
@@ -360,7 +397,7 @@ async function issueDraft(draft, button) {
         });
         void invoiceDelivery.refresh();
     } catch (error) {
-        status('invoice-draft-status', error.message || 'Fakturan kunde inte utfärdas.');
+        draftError(error.message || 'Fakturan kunde inte utfärdas.');
         button.disabled = false;
     }
 }
@@ -405,6 +442,12 @@ function formValues(form) {
 }
 
 function setProfile(profile) {
+    const changed = profileLoaded && JSON.stringify(sellerProfile) !== JSON.stringify(profile);
+    sellerProfile = profile;
+    profileLoaded = true;
+    const notice = $('invoice-profile-required');
+    if (notice) notice.hidden = !missingProfile();
+    if (changed && previewReadySignature) invalidatePreview();
     const values = profile || {country: 'Sverige', currencyCode: 'SEK', paymentTermsDays: 30, defaultVatPercent: 25};
     const mapping = {
         sellerName: 'seller-name', addressLine: 'seller-address', postalCode: 'seller-postal', city: 'seller-city',

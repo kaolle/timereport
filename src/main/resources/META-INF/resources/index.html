@@ -4,16 +4,16 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#183b35">
-    <meta name="application-version" content="51">
+    <meta name="application-version" content="52">
     <meta name="description" content="Registrera din arbetstid, även när nätet inte räcker till.">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Tidrapporten">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-    <link rel="stylesheet" href="/styles.css?v=51">
+    <link rel="stylesheet" href="/styles.css?v=52">
     <title>Tidrapporten</title>
-    <script type="module" src="/js/app.js?v=51"></script>
+    <script type="module" src="/js/app.js?v=52"></script>
 </head>
 <body>
     <a class="skip-link" href="#main">Till innehållet</a>
@@ -186,7 +186,7 @@
                     </div>
                     <button id="invoice-draft-load" class="primary-button" type="submit">Hämta fakturaunderlag</button>
                 </form>
-                <p id="invoice-draft-status" class="field-help" role="status"></p>
+                <p id="invoice-draft-status" class="field-help" role="status" tabindex="-1"></p>
                 <div id="invoice-draft-result" class="invoice-draft-result" aria-live="polite"></div>
             </section>
             <section id="invoice-panel-history" role="tabpanel" data-invoice-panel="history"

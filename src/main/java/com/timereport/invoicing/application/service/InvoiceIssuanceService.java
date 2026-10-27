@@ -55,7 +55,8 @@ public class InvoiceIssuanceService implements InvoiceIssuance {
         if (draft.workedMinutes() <= 0 || draft.weeks().stream().allMatch(week -> week.lines().isEmpty())) {
             throw new IllegalArgumentException("Det finns inga fakturerbara timmar för kunden och månaden.");
         }
-        var seller = settings.profile().orElseThrow(() -> new IllegalArgumentException("Fyll i och spara fakturauppgifterna först."));
+        var seller = settings.profile().orElseThrow(() -> new IllegalArgumentException(
+                "Du har inte registrerat ditt företag. Fyll i och spara uppgifterna under Ditt företag först."));
         var customer = settings.customers().stream().filter(row -> row.id().equals(customerId)).findFirst()
                 .orElseThrow(() -> new InvoicingConflict("Kunden finns inte."));
         LocalDate invoiceDate = LocalDate.now(BUSINESS_ZONE);

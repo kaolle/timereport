@@ -12,7 +12,7 @@ const entries = [row(1, '2026-10-01', 'FAIRA'), row(2, '2026-10-02', 'FAIRA', '0
 const snapshot = page => page.evaluate(async () => (await import('/js/storage.js')).snapshot());
 
 async function setup(page, context, source = entries) {
-    const state = {calls: [], waitForOctober: null};
+    const state = {calls: [], waitForOctober: null, vacations: []};
     await context.route('**/api/**', async route => {
         const request = route.request();
         const url = new URL(request.url());
@@ -35,6 +35,10 @@ async function setup(page, context, source = entries) {
             const from = url.searchParams.get('from'), to = url.searchParams.get('to');
             if (from === '2026-10-01' && state.waitForOctober) await state.waitForOctober;
             return route.fulfill({json: source.filter(entry => entry.date >= from && entry.date <= to)});
+        }
+        if (url.pathname === '/api/vacation-days') {
+            const from = url.searchParams.get('from'), to = url.searchParams.get('to');
+            return route.fulfill({json: state.vacations.filter(day => day.date >= from && day.date <= to)});
         }
         if (request.method() !== 'GET') return route.fulfill({status: 503});
         return route.fulfill({json: []});
@@ -159,5 +163,45 @@ test('failed month fetch never marks a partial local report as complete', async 
     await page.getByRole('button', {name: 'Månadsrapport', exact: true}).click();
     await expect(page.locator('#report-status')).toContainText('Månaden kunde inte hämtas');
     await expect(page.locator('#report-status')).toContainText('ofullständig');
+    expect((await snapshot(page)).reportMonths).toHaveLength(0);
+});
+
+test('vacation days and full workweeks are fetched for the month and retained offline', async ({page, context}, testInfo) => {
+    const state = await setup(page, context, []);
+    state.vacations = ['2026-09-30', '2026-10-01', '2026-10-05', '2026-10-06', '2026-10-07',
+        '2026-10-08', '2026-10-09', '2026-10-31', '2026-11-01'].map(date => ({date}));
+    await openReport(page);
+    await expect(page.locator('#report-vacation-total')).toHaveText('7 semesterdagar');
+    await expect(page.locator('#report-total')).toHaveText('0 h 00 min');
+    await expect(page.locator('.report-vacation time')).toHaveCount(7);
+    await expect(page.locator('[data-week-start="2026-10-05"] .report-vacation strong'))
+        .toHaveText('Semester hela arbetsveckan');
+    await expect(page.locator('[data-week-start="2026-09-28"] .report-vacation strong')).toHaveText('Semester');
+    await expect(page.locator('time[datetime="2026-09-30"]')).toHaveCount(0);
+    for (const width of [320, 1280]) {
+        await page.setViewportSize({width, height: 960});
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.locator('#monthly-report').screenshot({path: testInfo.outputPath(`vacation-report-${width}.png`)});
+    }
+    await context.setOffline(true);
+    await page.reload();
+    await expect(page.locator('#entry-fields')).toBeEnabled();
+    await page.getByRole('button', {name: 'Månadsrapport', exact: true}).click();
+    await expect(page.locator('#report-vacation-total')).toHaveText('7 semesterdagar');
+    await page.evaluate(async () => {
+        const storage = await import('/js/storage.js');
+        await storage.setVacationDay('2026-10-07', false);
+    });
+    await page.locator('#report-month').dispatchEvent('change');
+    await expect(page.locator('#report-vacation-total')).toHaveText('6 semesterdagar');
+    await expect(page.locator('[data-week-start="2026-10-05"] .report-vacation strong')).toHaveText('Semester');
+    await expect(page.locator('#report-status')).toContainText('Ej synkroniserade');
+});
+
+test('failed vacation fetch does not mark the month complete', async ({page, context}) => {
+    await setup(page, context);
+    await context.route('**/api/vacation-days?from=2026-10-01&to=2026-10-31', route => route.fulfill({status: 503}));
+    await page.getByRole('button', {name: 'Månadsrapport', exact: true}).click();
+    await expect(page.locator('#report-status')).toContainText('Månaden kunde inte hämtas');
     expect((await snapshot(page)).reportMonths).toHaveLength(0);
 });

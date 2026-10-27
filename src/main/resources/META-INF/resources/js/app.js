@@ -1,5 +1,5 @@
 import {configureMonthlyReport} from './report.js';
-import {configureInvoicingSettings} from './invoicing-settings.js?v=50';
+import {configureInvoicingSettings} from './invoicing-settings.js?v=51';
 import {configureAccountTools, logout, requireAccount} from './auth.js';
 import {formatMinutes, intervalsOverlap, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
 import {
@@ -939,6 +939,7 @@ function refreshOnReturn() {
 }
 
 window.addEventListener('focus', refreshOnReturn);
+window.addEventListener('pageshow', refreshOnReturn);
 document.addEventListener('visibilitychange', refreshOnReturn);
 window.addEventListener('online', () => { onlineStatus = null; connectionStatus(); void syncPending().then(() => refresh()); });
 window.addEventListener('billing-labels-updated', () => void refreshBillingLabels(true));

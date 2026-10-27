@@ -10,8 +10,10 @@ export function monthBounds(month) {
     return {from: `${month}-01`, to: last.toISOString().slice(0, 10)};
 }
 
-export function buildMonthlyReport(month, entries) {
+export function buildMonthlyReport(month, entries, vacationDays = []) {
     const {from, to} = monthBounds(month);
+    const vacations = [...new Set(vacationDays.map(day => day.date))]
+        .filter(date => validDate(date) && date >= from && date <= to).sort();
     const weekday = new Date(`${from}T12:00:00Z`).getUTCDay();
     const firstMonday = shiftDate(from, -((weekday + 6) % 7));
     const count = Math.floor((new Date(`${to}T12:00:00Z`) - new Date(`${firstMonday}T12:00:00Z`)) / (7 * 86400000)) + 1;
@@ -25,6 +27,9 @@ export function buildMonthlyReport(month, entries) {
         const weekNumber = Math.ceil(((thursday - january) / 86400000 + 1) / 7);
         const start = weekStart < from ? from : weekStart;
         const end = weekEnd > to ? to : weekEnd;
+        const weekVacations = vacations.filter(date => date >= start && date <= end);
+        const fullVacationWorkweek = Array.from({length: 5}, (_, day) => shiftDate(weekStart, day))
+            .every(date => weekVacations.includes(date));
         const groups = new Map();
         for (const entry of entries) {
             if (entry.deleted || entry.date < start || entry.date > end) continue;
@@ -35,8 +40,10 @@ export function buildMonthlyReport(month, entries) {
             .map(([customerCode, workedMinutes]) => ({customerCode, workedMinutes}));
         weeks.push({
             weekStart, weekNumber, weekYear, from: start, to: end, customers,
+            vacationDates: weekVacations, fullVacationWorkweek,
             workedMinutes: customers.reduce((sum, row) => sum + row.workedMinutes, 0)
         });
     }
-    return {month, from, to, weeks, workedMinutes: weeks.reduce((sum, week) => sum + week.workedMinutes, 0)};
+    return {month, from, to, weeks, vacationDays: vacations.length,
+        workedMinutes: weeks.reduce((sum, week) => sum + week.workedMinutes, 0)};
 }

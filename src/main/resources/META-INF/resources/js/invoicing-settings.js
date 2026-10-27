@@ -1,7 +1,7 @@
 import {authenticatedFetch} from './auth.js';
 import {formatMinutes} from './domain.js';
 import {snapshot} from './storage.js';
-import {configureInvoiceDelivery} from './invoice-delivery.js?v=50';
+import {configureInvoiceDelivery} from './invoice-delivery.js?v=51';
 
 const $ = id => document.getElementById(id);
 let busy = false;
@@ -28,7 +28,7 @@ function showInvoiceView(view) {
 
 async function request(path, method = 'GET', body, timeout = 10000) {
     const response = await authenticatedFetch(path, {
-        method, cache: 'no-store', signal: AbortSignal.timeout(timeout),
+        method, cache: 'no-store', timeoutMs: timeout,
         headers: body === undefined ? {} : {'Content-Type': 'application/json'},
         body: body === undefined ? undefined : JSON.stringify(body)
     });
@@ -274,7 +274,7 @@ async function previewDraft(draft, button) {
     status('invoice-draft-status', 'Skapar PDF-förhandsvisning av utkastet …');
     try {
         const response = await authenticatedFetch('/api/invoicing/draft/pdf', {
-            method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(30000),
+            method: 'POST', cache: 'no-store', timeoutMs: 30000,
             headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
         });
         if (!response.ok) {
@@ -330,7 +330,7 @@ async function issueDraft(draft, button) {
     status('invoice-draft-status', 'Utfärdar fakturan och skapar PDF …');
     try {
         const response = await authenticatedFetch('/api/invoicing/invoices', {
-            method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(30000),
+            method: 'POST', cache: 'no-store', timeoutMs: 30000,
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         });

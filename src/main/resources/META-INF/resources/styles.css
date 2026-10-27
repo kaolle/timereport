@@ -409,6 +409,24 @@ dialog p { font-size: 14px; color: var(--muted); }
     font-size: 12px;
 }
 
+.report-vacation {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #e8f3ec;
+    color: #244d36;
+    font-size: 13px;
+}
+
+.report-vacation-days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
 .report-table {
     width: 100%;
     border-collapse: collapse;

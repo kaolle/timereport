@@ -48,6 +48,12 @@ mismatch, verify the installed schema before using Flyway `repair`; repair updat
 migration history and does not apply changed SQL. Keep repair a one-time operation,
 rather than enabling it automatically on startup.
 
+In IntelliJ IDEA, use **Settings → Editor → Code Style → Formatter → Do not format**
+and add `**/db/migration/*.sql` to protect migrations from reformatting, including
+save and commit actions. See the [IntelliJ formatter exclusions](https://www.jetbrains.com/help/idea/reformat-and-rearrange-code.html#exclude_file_from_reformat).
+A clean Git working tree does not rule out a checksum mismatch: a migration can
+have been executed locally before formatting was included in its first commit.
+
 ### Create your first account
 
 Open `http://localhost:8080/`, select registration, and enter an email address.
@@ -206,8 +212,11 @@ total, and the month total. Only dates inside the selected month contribute to
 boundary weeks. Times without a code appear under **Utan kundkod**; empty weeks
 show zero. Totals use net worked minutes after lunch/deductions, displayed as hours
 and minutes. Deleted entries and vacation days contribute no worked time.
+Weeks with vacation show the marked dates and **Semester hela arbetsveckan** when
+all five weekdays are marked within the selected month. The month also shows a
+count of marked vacation days, including any marked weekends.
 
-Selecting the report fetches the full month's time entries through the existing
+Selecting the report fetches the full month's time entries and vacation days through the existing
 account-authenticated range API. Local pending edits, additions, and deletions are
 preserved and included in the totals. **Hämta månadens tider** refreshes that month;
 it does not upload pending changes. Report requests are made when the report view opens,
@@ -319,6 +328,13 @@ reuse revokes the session. Only hashes of refresh and email tokens are persisted
 Logout revokes that session; password changes and resets revoke all account sessions.
 Protected data requests also check session validity, so revocation takes effect
 without waiting for JWT expiry. Passwords use salted PBKDF2-HMAC-SHA256 (600,000 rounds).
+
+On return to the app, including a restored browser page, expired access tokens are
+renewed using the refresh cookie. Renewal allows 30 seconds for a cold start; the
+data request's timeout starts after renewal. Registration settings load independently.
+A temporary renewal/network failure during startup lets a remembered account open
+its local data; an authentication rejection still shows the login screen. Cached
+account information never authorizes server access.
 
 All POST authentication requests require `X-Requested-With: timereport`. When an
 `Origin` header is present, it must exactly match `PUBLIC_URL`. Authentication is

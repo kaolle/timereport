@@ -49,3 +49,24 @@ test('null, missing and blank codes group together and zero net time is valid', 
     assert.deepEqual(report.weeks[0].customers, [
         {customerCode: 'A', workedMinutes: 0}, {customerCode: null, workedMinutes: 1530}]);
 });
+
+test('vacation dates are unique and clipped to the month, with full weekday weeks distinguished', () => {
+    const dates = ['2026-09-30', '2026-10-01', '2026-10-05', '2026-10-06', '2026-10-07',
+        '2026-10-08', '2026-10-09', '2026-10-09', '2026-10-31', '2026-11-01'];
+    const report = buildMonthlyReport('2026-10', [entry('2026-10-02', 'A')], dates.map(date => ({date})));
+    assert.equal(report.vacationDays, 7);
+    assert.deepEqual(report.weeks[0].vacationDates, ['2026-10-01']);
+    assert.equal(report.weeks[0].fullVacationWorkweek, false);
+    assert.equal(report.weeks[1].fullVacationWorkweek, true);
+    assert.equal(report.weeks[1].vacationDates.length, 5);
+    assert.deepEqual(report.weeks.at(-1).vacationDates, ['2026-10-31']);
+    assert.equal(report.workedMinutes, 510);
+    assert.equal(buildMonthlyReport('2026-10', []).vacationDays, 0);
+});
+
+test('a week crossing months is not labelled a full vacation workweek without all weekdays in the month', () => {
+    const report = buildMonthlyReport('2026-10', [],
+        ['2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02'].map(date => ({date})));
+    assert.equal(report.weeks[0].fullVacationWorkweek, false);
+    assert.equal(report.vacationDays, 2);
+});

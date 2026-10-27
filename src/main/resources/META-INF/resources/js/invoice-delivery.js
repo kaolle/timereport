@@ -1,4 +1,5 @@
-
+import {authenticatedFetch} from './auth.js';
+import {today} from './domain.js';
 
 const $ = id => document.getElementById(id);
 const money = (amount, currency) => new Intl.NumberFormat('sv-SE', {
@@ -59,7 +60,7 @@ export function configureInvoiceDelivery({request}) {
         if (!pdf) {
             const response = await authenticatedFetch(`/api/invoicing/invoices/${active.number}/pdf`, {
                 cache: 'no-store',
-                signal: AbortSignal.timeout(30000)
+                timeoutMs: 30000
             });
             if (!response.ok) throw new Error('PDF-filen kunde inte hämtas. Försök igen.');
             pdf = await response.blob();

@@ -4,16 +4,16 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#183b35">
-    <meta name="application-version" content="50">
+    <meta name="application-version" content="51">
     <meta name="description" content="Registrera din arbetstid, även när nätet inte räcker till.">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Tidrapporten">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-    <link rel="stylesheet" href="/styles.css?v=50">
+    <link rel="stylesheet" href="/styles.css?v=51">
     <title>Tidrapporten</title>
-    <script type="module" src="/js/app.js?v=50"></script>
+    <script type="module" src="/js/app.js?v=51"></script>
 </head>
 <body>
     <a class="skip-link" href="#main">Till innehållet</a>
@@ -130,7 +130,7 @@
                 <button id="report-refresh" class="secondary-button" type="button">Hämta månadens tider</button>
             </div>
             <div class="report-total-panel"><p class="eyebrow">MÅNADENS ARBETADE TID</p><strong id="report-total">0 h 00
-                min</strong></div>
+                min</strong><p id="report-vacation-total"></p></div>
             <p id="report-status" class="field-help" role="status"></p>
             <div id="report-weeks" class="report-weeks"></div>
         </section>

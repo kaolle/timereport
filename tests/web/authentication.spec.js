@@ -86,6 +86,62 @@ test('login uses memory-only access tokens and refresh never sends a bearer toke
     expect(state.calls.find(call => call.path === '/api/customer-codes').headers.authorization).toContain('Bearer secret-access');
 });
 
+test('unavailable registration settings do not block session recovery', async ({page, context}) => {
+    const state = await mock(context);
+    state.account = A;
+    let release;
+    const waiting = new Promise(resolve => { release = resolve; });
+    await context.route('**/api/auth/config', async route => {
+        await waiting;
+        await route.fulfill({json: {emailVerificationRequired: true}});
+    });
+    try {
+        await page.goto('/');
+        await expect(page.locator('#main')).toBeVisible();
+        await expect(page.locator('#entry-fields')).toBeEnabled();
+    } finally {
+        release();
+    }
+});
+
+test('a temporary refresh failure on reload opens remembered local data and can recover', async ({page, context}) => {
+    await mock(context);
+    await login(page);
+    await seedPending(page);
+    await context.route('**/api/auth/refresh', route => route.abort('failed'), {times: 1});
+    await page.reload();
+    await expect(page.locator('#main')).toBeVisible();
+    await expect(page.locator('#auth-panel')).toBeHidden();
+    await expect(page.locator('#entry-fields')).toBeEnabled();
+    expect((await snapshot(page)).outbox).toHaveLength(1);
+    const result = await page.evaluate(async () => {
+        const {authenticatedFetch} = await import('/js/auth.js');
+        return (await authenticatedFetch('/api/customer-codes')).status;
+    });
+    expect(result).toBe(200);
+});
+
+test('returning to a restored page renews expired access before starting the API timeout', async ({page, context}) => {
+    const state = await mock(context);
+    await login(page);
+    await expect(page.locator('#refresh')).toBeEnabled();
+    const before = state.calls.filter(call => call.path === '/api/customer-codes').length;
+    let renewalStarted = false;
+    await context.route('**/api/auth/refresh', async route => {
+        renewalStarted = true;
+        // Longer than the data API's eight-second timeout, but within the refresh allowance.
+        await new Promise(resolve => setTimeout(resolve, 9000));
+        await route.fallback();
+    });
+    await page.clock.setFixedTime(new Date(Date.now() + 3 * 60 * 60 * 1000));
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted: true})));
+    await expect.poll(() => renewalStarted).toBe(true);
+    await expect.poll(() => state.calls.filter(call => call.path === '/api/customer-codes').length,
+        {timeout: 15000}).toBeGreaterThan(before);
+    await expect(page.locator('#main')).toBeVisible();
+    await expect(page.locator('#auth-panel')).toBeHidden();
+});
+
 test('offline queue survives reload and remains isolated on account switch', async ({page, context}) => {
     const state = await mock(context);
     await login(page);

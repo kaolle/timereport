@@ -21,7 +21,7 @@ async function authRequest(path, body) {
             ...(path === 'change-password' && accessToken ? {Authorization: `Bearer ${accessToken}`} : {})
         },
         body: body ? JSON.stringify(body) : undefined,
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(path === 'refresh' ? 30000 : 10000)
     });
     let result;
     if (response.status !== 204) {
@@ -66,7 +66,7 @@ async function refreshAccess() {
     return refreshPromise;
 }
 
-export async function authenticatedFetch(path, options) {
+export async function authenticatedFetch(path, {timeoutMs = 8000, ...options} = {}) {
     if (!account || rememberedAccount()?.accountId !== account.accountId) {
         const error = new Error('Logga in igen. Dina lokala tider finns kvar på rätt konto.');
         error.status = 401;
@@ -75,6 +75,8 @@ export async function authenticatedFetch(path, options) {
     if (!accessToken || Date.now() >= expiresAt - 15000) await refreshAccess();
     const fetchOnce = () => fetch(path, {
         ...options, credentials: 'same-origin',
+        // Start the API timeout after token renewal, including on a 401 retry.
+        signal: options.signal ?? AbortSignal.timeout(timeoutMs),
         headers: {...options?.headers, Authorization: `Bearer ${accessToken}`}
     });
     let response = await fetchOnce();
@@ -104,13 +106,6 @@ export async function requireAccount() {
     const password = document.getElementById('auth-password');
     const local = rememberedAccount();
     let emailVerificationRequired = true;
-    if (navigator.onLine) {
-        try {
-            const response = await fetch('/api/auth/config', {credentials: 'same-origin', cache: 'no-store'});
-            if (response.ok) emailVerificationRequired = (await response.json()).emailVerificationRequired !== false;
-        } catch { /* Keep the safe default when offline or the config endpoint is unavailable. */
-        }
-    }
     let linkToken;
     const fragment = new URLSearchParams(location.hash.slice(1));
     if (fragment.has('reset') || fragment.has('verify')) {
@@ -139,15 +134,37 @@ export async function requireAccount() {
 
     mode.addEventListener('change', fields);
     fields();
+    if (navigator.onLine) {
+        // Registration settings must not block session recovery or access to local data.
+        void (async () => {
+            try {
+                const response = await fetch('/api/auth/config', {
+                    credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(10000)
+                });
+                if (response.ok) {
+                    emailVerificationRequired = (await response.json()).emailVerificationRequired !== false;
+                    fields();
+                }
+            } catch { /* Keep email verification enabled when settings cannot be fetched. */ }
+        })();
+    }
     if (!linkToken && navigator.onLine) {
+        status.textContent = 'Återansluter till ditt konto…';
         try {
             const result = await refreshAccess();
             panel.hidden = true;
             main.hidden = false;
             return result;
-        } catch {
+        } catch (error) {
             accessToken = null;
+            if (local && ![401, 403].includes(error.status)) {
+                account = local;
+                panel.hidden = true;
+                main.hidden = false;
+                return account;
+            }
         }
+        status.textContent = '';
     }
     if (!linkToken && !navigator.onLine && local) {
         account = local;

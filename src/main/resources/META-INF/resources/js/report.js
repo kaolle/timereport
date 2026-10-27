@@ -1,7 +1,7 @@
 import {formatMinutes, today} from './domain.js';
 import {buildMonthlyReport, monthBounds} from './monthly-report.js';
-import {fetchRange} from './api.js';
-import {cacheRange, snapshot} from './storage.js';
+import {fetchRange, fetchVacationDays} from './api.js';
+import {cacheRange, cacheVacationRange, snapshot} from './storage.js';
 
 const dateLabel = date => new Intl.DateTimeFormat('sv-SE', {day: 'numeric', month: 'short', timeZone: 'UTC'})
     .format(new Date(`${date}T12:00:00Z`));
@@ -29,20 +29,40 @@ export function configureMonthlyReport({onCache}) {
         if (panel.hidden) return;
         let report;
         try {
-            report = buildMonthlyReport(month.value, data.entries);
+            report = buildMonthlyReport(month.value, data.entries, data.vacationDays);
         } catch (error) {
             status.textContent = error.message;
             document.getElementById('report-total').textContent = '—';
+            document.getElementById('report-vacation-total').textContent = '';
             document.getElementById('report-weeks').replaceChildren();
             return;
         }
         document.getElementById('report-total').textContent = formatMinutes(report.workedMinutes);
+        document.getElementById('report-vacation-total').textContent = report.vacationDays
+            ? `${report.vacationDays} ${report.vacationDays === 1 ? 'semesterdag' : 'semesterdagar'}` : '';
         const list = document.getElementById('report-weeks');
         const cards = report.weeks.map(week => {
             const card = element('section', 'report-week');
             card.dataset.weekStart = week.weekStart;
             card.append(element('h3', '', `Vecka ${week.weekNumber}`),
                 element('p', 'report-week-range', `${dateLabel(week.from)} – ${dateLabel(week.to)}`));
+            if (week.vacationDates.length) {
+                const vacation = element('div', 'report-vacation');
+                vacation.append(element('strong', '', week.fullVacationWorkweek
+                    ? 'Semester hela arbetsveckan' : 'Semester'));
+                const days = element('ul', 'report-vacation-days');
+                for (const date of week.vacationDates) {
+                    const day = element('li', '');
+                    const time = element('time', '', new Intl.DateTimeFormat('sv-SE', {
+                        weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC'
+                    }).format(new Date(`${date}T12:00:00Z`)));
+                    time.dateTime = date;
+                    day.append(time);
+                    days.append(day);
+                }
+                vacation.append(days);
+                card.append(vacation);
+            }
             const table = element('table', 'report-table');
             const head = element('thead', '');
             const header = element('tr', '');
@@ -80,14 +100,15 @@ export function configureMonthlyReport({onCache}) {
         });
         list.replaceChildren(...cards);
         const cached = data.reportMonths.find(row => row.month === month.value);
-        const pending = data.entries.some(entry => entry.date >= report.from && entry.date <= report.to && entry.syncState !== 'synced');
+        const pending = data.entries.some(entry => entry.date >= report.from && entry.date <= report.to && entry.syncState !== 'synced')
+            || data.vacationOutbox.some(day => day.date >= report.from && day.date <= report.to);
         const notes = [];
         if (loading) notes.push('Hämtar månadens tider. Visar lokala uppgifter under tiden.');
         else if (failure) notes.push(failure);
         else if (!navigator.onLine) notes.push('Offline. Visar sparade uppgifter på den här enheten.');
         else if (cached) notes.push('Månadens tider har hämtats. Lokala ändringar ingår.');
         if (!cached) notes.push('Hela månaden har inte hämtats; summeringen kan vara ofullständig.');
-        if (pending) notes.push('Ej synkroniserade ändringar ingår i summeringen.');
+        if (pending) notes.push('Ej synkroniserade ändringar ingår i rapporten.');
         status.textContent = notes.join(' ');
         refresh.disabled = loading || !navigator.onLine;
     }
@@ -101,8 +122,9 @@ export function configureMonthlyReport({onCache}) {
             if (!month.value || !navigator.onLine) return;
             const requestedMonth = month.value;
             const {from, to} = monthBounds(requestedMonth);
-            const entries = await fetchRange(from, to);
+            const [entries, vacations] = await Promise.all([fetchRange(from, to), fetchVacationDays(from, to)]);
             if (revision !== requestRevision) return;
+            await cacheVacationRange(from, to, vacations);
             await cacheRange(from, to, entries, requestedMonth);
             await onCache();
         } catch (error) {

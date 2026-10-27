@@ -16,6 +16,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -50,12 +52,14 @@ public class JdbcInvoiceDeliveryRepository implements InvoiceDeliveryRepository,
                         throw new InvoicingConflict("För många utskicksförsök för fakturan. Försök igen om en timme.");
                 }
             }
-            try (var statement = connection.prepareStatement("INSERT INTO invoice_deliveries(account_id,id,invoice_number,recipient,state,requested_at) VALUES(?,?,?,?,'SENDING',?) ON CONFLICT DO NOTHING")) {
+            try (var statement = connection.prepareStatement("INSERT INTO invoice_deliveries(account_id,id,invoice_number,recipient,state,requested_at,cc,bcc) VALUES(?,?,?,?,'SENDING',?,?,?) ON CONFLICT DO NOTHING")) {
                 statement.setObject(1, identity.accountId());
                 statement.setObject(2, delivery.id());
                 statement.setInt(3, delivery.invoiceNumber());
                 statement.setString(4, delivery.recipient());
                 statement.setTimestamp(5, Timestamp.from(delivery.requestedAt()));
+                statement.setArray(6, connection.createArrayOf("text", delivery.cc().toArray(String[]::new)));
+                statement.setArray(7, connection.createArrayOf("text", delivery.bcc().toArray(String[]::new)));
                 if (statement.executeUpdate() == 1) return true;
                 verifyRequest(find(delivery.id()).orElseThrow(), delivery);
                 return false;
@@ -66,14 +70,15 @@ public class JdbcInvoiceDeliveryRepository implements InvoiceDeliveryRepository,
     }
 
     private void verifyRequest(InvoiceDelivery existing, InvoiceDelivery requested) {
-        if (existing.invoiceNumber() != requested.invoiceNumber() || !existing.recipient().equals(requested.recipient()))
+        if (existing.invoiceNumber() != requested.invoiceNumber() || !existing.recipient().equals(requested.recipient())
+                || !existing.cc().equals(requested.cc()) || !existing.bcc().equals(requested.bcc()))
             throw new InvoicingConflict("Utskicks-id används redan för ett annat utskick.");
     }
 
     @Override
     public Optional<InvoiceDelivery> find(UUID requestId) {
         try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(
-                "SELECT id,invoice_number,recipient,state,requested_at,completed_at FROM invoice_deliveries WHERE account_id=? AND id=?")) {
+                "SELECT id,invoice_number,recipient,cc,bcc,state,requested_at,completed_at FROM invoice_deliveries WHERE account_id=? AND id=?")) {
             statement.setObject(1, identity.accountId());
             statement.setObject(2, requestId);
             try (var result = statement.executeQuery()) {
@@ -154,8 +159,19 @@ public class JdbcInvoiceDeliveryRepository implements InvoiceDeliveryRepository,
 
     static InvoiceDelivery read(ResultSet result) throws SQLException {
         return InvoiceDelivery.builder().id(result.getObject("id", UUID.class)).invoiceNumber(result.getInt("invoice_number"))
-                .recipient(result.getString("recipient")).state(InvoiceDelivery.State.valueOf(result.getString("state")))
+                .recipient(result.getString("recipient")).cc(addresses(result, "cc")).bcc(addresses(result, "bcc"))
+                .state(InvoiceDelivery.State.valueOf(result.getString("state")))
                 .requestedAt(instant(result, "requested_at")).completedAt(instant(result, "completed_at")).build();
+    }
+
+    private static List<String> addresses(ResultSet result, String column) throws SQLException {
+        var values = result.getArray(column);
+        if (values == null) return List.of();
+        try {
+            return List.copyOf(Arrays.asList((String[]) values.getArray()));
+        } finally {
+            values.free();
+        }
     }
 
     static Instant instant(ResultSet result, String name) throws SQLException {

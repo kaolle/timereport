@@ -490,8 +490,12 @@ dialog p { font-size: 14px; color: var(--muted); }
 
 .invoice-delivery-options {
     display: grid;
-    gap: 18px;
+    gap: 14px;
     margin: 20px 0;
+}
+
+.invoice-delivery-options .field {
+    margin-bottom: 0;
 }
 
 .invoice-delivery-options .billing-checkbox {

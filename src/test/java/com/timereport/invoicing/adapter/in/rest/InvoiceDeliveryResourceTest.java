@@ -7,13 +7,14 @@ import io.smallrye.mutiny.Multi;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
+import javax.sql.DataSource;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 @QuarkusTest
@@ -22,9 +23,11 @@ class InvoiceDeliveryResourceTest {
     AuthTestSupport auth;
     @Inject
     MockMailbox mailbox;
+    @Inject
+    DataSource dataSource;
 
     @Test
-    void archivedPdfDeliveryIsIdempotentAndAccountScopedAndKeepsPaymentStatusSeparate() {
+    void archivedPdfDeliveryIsIdempotentAndAccountScopedAndKeepsPaymentStatusSeparate() throws Exception {
         var owner = auth.login();
         var other = auth.login();
         String token = owner.accessToken();
@@ -35,9 +38,10 @@ class InvoiceDeliveryResourceTest {
                         Map.entry("defaultVatPercent", 25), Map.entry("fTaxRegistered", true)))
                 .put("/api/invoicing/profile").then().statusCode(200);
         String recipient = UUID.randomUUID() + "@example.test";
+        String contact = UUID.randomUUID() + "@example.test";
         String customer = given().auth().oauth2(token).contentType("application/json").body(Map.of(
                         "customerNumber", "C-1", "name", "Customer AB", "addressLine", "Kundgatan 2", "postalCode", "54321",
-                        "city", "Göteborg", "country", "Sverige", "invoiceEmail", recipient, "paymentTermsDays", 30))
+                        "city", "Göteborg", "country", "Sverige", "invoiceEmail", recipient, "paymentTermsDays", 30, "contactEmail", contact))
                 .post("/api/invoicing/customers").then().statusCode(201).extract().path("id");
         String code = "MAIL-" + UUID.randomUUID();
         given().auth().oauth2(token).contentType("application/json").body(Map.of("active", true, "expectedVersion", 0))
@@ -52,6 +56,16 @@ class InvoiceDeliveryResourceTest {
                 .post("/api/invoicing/invoices").then().statusCode(200).extract().response();
         String number = issued.header("X-Invoice-Number");
         String path = "/api/invoicing/invoices/" + number;
+        // A pre-V9 snapshot has no contactEmail; defaults must use the current customer card.
+        try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(
+                "UPDATE issued_invoices SET snapshot=snapshot #- '{customer,contactEmail}' WHERE account_id=? AND invoice_number=?")) {
+            statement.setObject(1, UUID.fromString(owner.accountId()));
+            statement.setInt(2, Integer.parseInt(number));
+            statement.executeUpdate();
+        }
+        given().auth().oauth2(token).get(path + "/delivery-defaults").then().statusCode(200)
+                .body("cc", contains(contact), "bcc", contains("company@example.test"));
+        given().auth().oauth2(other.accessToken()).get(path + "/delivery-defaults").then().statusCode(404);
         byte[] pdf = issued.asByteArray();
         assertTrue(mailbox.getMailMessagesSentTo(recipient).isEmpty());
         given().auth().oauth2(token).get("/api/invoicing/invoices").then().statusCode(200)
@@ -72,6 +86,8 @@ class InvoiceDeliveryResourceTest {
         var message = mailbox.getMailsSentTo(recipient).getFirst();
         assertTrue(message.getFrom().contains("Example AB via Tidrapporten"));
         assertEquals("company@example.test", message.getReplyTo());
+        assertEquals(List.of(contact), message.getCc());
+        assertEquals(List.of("company@example.test"), message.getBcc());
         assertTrue(message.getText().contains("Vid frågor kan du skicka mejl till company@example.test."));
         assertEquals("application/pdf", message.getAttachments().getFirst().getContentType());
         var bytes = Multi.createFrom().publisher(message.getAttachments().getFirst().getData()).collect().asList().await().atMost(Duration.ofSeconds(5));
@@ -79,6 +95,9 @@ class InvoiceDeliveryResourceTest {
         for (int i = 0; i < bytes.size(); i++) attachment[i] = bytes.get(i);
         assertArrayEquals(pdf, attachment);
         given().auth().oauth2(token).contentType("application/json").body(Map.of("recipient", "other@example.test", "requestId", requestId))
+                .post(path + "/email").then().statusCode(409);
+        given().auth().oauth2(token).contentType("application/json").body(Map.of("recipient", recipient, "requestId", requestId,
+                        "cc", List.of("different@example.test"), "bcc", List.of("company@example.test")))
                 .post(path + "/email").then().statusCode(409);
         given().auth().oauth2(token).contentType("application/json").body(Map.of("sent", true, "paid", true, "expectedVersion", 1))
                 .put(path + "/status").then().statusCode(200).body("paid", equalTo(true), "sent", equalTo(true), "version", equalTo(2));
@@ -96,7 +115,17 @@ class InvoiceDeliveryResourceTest {
         assertTrue(results.stream().allMatch(state -> state.equals("SENDING") || state.equals("SENT")));
         assertEquals(2, mailbox.getMailMessagesSentTo(recipient).size());
         given().auth().oauth2(token).get("/api/invoicing/invoices").then().statusCode(200)
-                .body("[0].status.paid", equalTo(true), "[0].status.sent", equalTo(true), "[0].status.version", equalTo(3));
+                .body("[0].status.paid", equalTo(true), "[0].status.sent", equalTo(true), "[0].status.version", equalTo(3),
+                        "[0].lastDelivery.cc", contains(contact), "[0].lastDelivery.bcc", contains("company@example.test"));
+        given().auth().oauth2(token).contentType("application/json").body(Map.of("recipient", recipient, "requestId", UUID.randomUUID(),
+                        "cc", List.of("override@example.test"), "bcc", List.of()))
+                .post(path + "/email").then().statusCode(200).body("cc", contains("override@example.test"), "bcc", empty());
+        var override = mailbox.getMailsSentTo(recipient).getLast();
+        assertEquals(List.of("override@example.test"), override.getCc());
+        assertTrue(override.getBcc().isEmpty());
+        given().auth().oauth2(token).contentType("application/json").body(Map.of("recipient", recipient, "requestId", UUID.randomUUID(),
+                        "cc", List.of("bad\r\nBcc:evil@example.test")))
+                .post(path + "/email").then().statusCode(400);
         given().auth().oauth2(token).contentType("application/json").body(Map.of("recipient", "bad\r\nBcc:evil@example.test", "requestId", UUID.randomUUID()))
                 .post(path + "/email").then().statusCode(400);
         given().get(path + "/pdf").then().statusCode(401);

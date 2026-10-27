@@ -1,7 +1,7 @@
 package com.timereport.invoicing.adapter.in.rest;
 
-import com.timereport.invoicing.application.port.in.InvoicingSettings;
 import com.timereport.invoicing.application.port.in.InvoiceNumberingSettings;
+import com.timereport.invoicing.application.port.in.InvoicingSettings;
 import com.timereport.invoicing.domain.BillingCustomer;
 import com.timereport.invoicing.domain.CustomerCodeBilling;
 import com.timereport.invoicing.domain.SellerBillingProfile;
@@ -121,6 +121,6 @@ public class InvoicingSettingsResource {
         return BillingCustomer.builder().id(id).customerNumber(r.customerNumber()).name(r.name()).shortName(r.shortName()).addressLine(r.addressLine())
                 .postalCode(r.postalCode()).city(r.city()).country(r.country()).organizationNumber(r.organizationNumber())
                 .vatNumber(r.vatNumber()).invoiceEmail(r.invoiceEmail()).customerReference(r.customerReference())
-                .ourReference(r.ourReference()).paymentTermsDays(r.paymentTermsDays()).build();
+                .ourReference(r.ourReference()).paymentTermsDays(r.paymentTermsDays()).contactEmail(r.contactEmail()).build();
     }
 }

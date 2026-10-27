@@ -1,7 +1,7 @@
 import {authenticatedFetch} from './auth.js';
 import {formatMinutes} from './domain.js';
 import {snapshot} from './storage.js';
-import {configureInvoiceDelivery} from './invoice-delivery.js?v=49';
+import {configureInvoiceDelivery} from './invoice-delivery.js?v=50';
 
 const $ = id => document.getElementById(id);
 let busy = false;
@@ -459,6 +459,10 @@ const customerFields = [
     {name: 'organizationNumber', label: 'Organisationsnummer', maxLength: 40},
     {name: 'vatNumber', label: 'Momsregistreringsnummer', maxLength: 40},
     {name: 'invoiceEmail', label: 'Faktura-e-post', maxLength: 254, type: 'email'},
+    {
+        name: 'contactEmail', label: 'Kontaktpersonens e-post', maxLength: 254, type: 'email',
+        help: 'Föreslås som CC när fakturan skickas med e-post.'
+    },
     {name: 'customerReference', label: 'Er referens', maxLength: 160},
     {name: 'ourReference', label: 'Vår referens', maxLength: 160},
     {name: 'paymentTermsDays', label: 'Betalningsvillkor (dagar)', type: 'number', max: 365, defaultValue: 30}

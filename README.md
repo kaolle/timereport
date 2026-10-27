@@ -225,7 +225,8 @@ or CSV export is introduced by this feature.
 Choose **Fakturering → Ditt företag** while online to configure seller details and
 the next invoice number. Use **Fakturering → Kunder** to add customers and manage
 their billing details. Each customer can have several customer codes, with a service
-description, hourly rate, and VAT rate per code. Codes can be added in the customer
+description, hourly rate, and VAT rate per code. The optional customer field
+**Kontaktpersonens e-post** supplies the default CC address. Codes can be added in the customer
 form, in the customer's code section, or while registering time. Their optional
 short name appears beside the code in the time-entry selector, including offline
 after the label has been cached. A customer code is required for a time entry to be
@@ -261,6 +262,15 @@ email must be selected explicitly. The recipient defaults to the customer's save
 invoice email and can be changed for that submission. Closing leaves the invoice
 issued and available under **Fakturering → Fakturor**.
 
+The delivery dialog loads default copy recipients for the selected invoice:
+the customer's **Kontaktpersonens e-post** becomes CC and the company's **E-post**
+becomes BCC. Defaults use the current customer/company settings, falling back to
+the archived invoice when a record is unavailable. CC and BCC can be edited for
+each submission; BCC is hidden from other email recipients. Enter comma-separated
+addresses or clear a field to omit those copies. Each list allows up to ten
+addresses. Duplicates across To, CC and BCC are removed. If defaults cannot be
+loaded, reopen the dialog before sending; PDF download remains available.
+
 The invoice list groups all account invoices into **Förfallna**, **Obetalda**, and
 **Betalda**, showing gross and VAT totals separately per currency. Unpaid invoices
 become overdue the day after their due date. **Betald** is a manual payment marker;
@@ -277,7 +287,7 @@ address: **Vid frågor kan du skicka mejl till …**. Set it under
 verification/reset messages use the display name **Tidrapporten**.
 
 Each email request has a UUID `requestId`. Repeating it returns the recorded state
-without resending; reusing it for another recipient/invoice returns `409`. A lost
+without resending; reusing it for another recipient, copy list or invoice returns `409`. A lost
 HTTP response retains the ID in the dialog. Explicit resends use a new ID and ask
 for confirmation. Attempts are stored before SMTP, with `SENDING`, `SENT`, or
 `FAILED` results. There is no automatic SMTP retry: a timeout or crash can leave an
@@ -286,7 +296,9 @@ new sends for five minutes; each invoice permits five attempts per hour.
 `SENT` means SMTP acceptance, not delivery to the inbox. Bounce processing remains
 in [INFRA_TODO.md](INFRA_TODO.md). Development/test uses Quarkus's mock mailbox,
 so no real email is sent. V8 adds delivery attempts and mutable status metadata;
-earlier migration scripts are unchanged.
+earlier migration scripts are unchanged. V9 adds the customer's contact email and
+stores the exact CC/BCC lists on each delivery attempt. For API clients, omitted
+or null copy lists use the defaults; explicit empty lists suppress those copies.
 
 ## Authentication
 
@@ -469,7 +481,8 @@ All endpoints below require
 | `POST /api/invoicing/invoices`                             | Issue the reviewed month/customer invoice and return its PDF; accepts the same line adjustments as the preview |
 | `GET /api/invoicing/invoices/{number}/pdf`                 | Download the account's issued PDF again                                                                        |
 | `GET /api/invoicing/invoices`                              | List account invoices, due dates, gross/VAT amounts, status versions, and latest email attempt                 |
-| `POST /api/invoicing/invoices/{number}/email`              | Send the archived PDF; body: `recipient` and UUID `requestId`                                                  |
+| `POST /api/invoicing/invoices/{number}/email`              | Send the archived PDF; body: `recipient`, UUID `requestId`, optional `cc`/`bcc` arrays                         |
+| `GET /api/invoicing/invoices/{number}/delivery-defaults`   | Read default CC and BCC lists for the account's issued invoice                                                 |
 | `PUT /api/invoicing/invoices/{number}/status`              | Set manual `sent`/`paid` booleans with `expectedVersion`; returns updated status                               |
 | `PUT /api/customer-codes/{code}`                           | Create, activate, or deactivate a customer code                                                                |
 | `GET /api/customer-codes`                                  | List codes, including inactive ones                                                                            |

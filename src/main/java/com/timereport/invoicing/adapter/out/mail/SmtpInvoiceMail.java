@@ -8,6 +8,8 @@ import io.quarkus.mailer.Mailer;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.util.List;
+
 @ApplicationScoped
 public class SmtpInvoiceMail implements InvoiceMail {
     private final Mailer mailer;
@@ -19,7 +21,7 @@ public class SmtpInvoiceMail implements InvoiceMail {
     }
 
     @Override
-    public void send(IssuedInvoiceDocument document, String recipient, String replyTo) {
+    public void send(IssuedInvoiceDocument document, String recipient, String replyTo, List<String> cc, List<String> bcc) {
         var invoice = document.invoice();
         var seller = invoice.seller();
         String name = seller.sellerName().replaceAll("[\\p{Cntrl}]", " ");
@@ -29,6 +31,8 @@ public class SmtpInvoiceMail implements InvoiceMail {
         mailer.send(Mail.withText(recipient, "Faktura " + invoice.invoiceNumber() + " från " + name, text)
                 .setFrom(SmtpAddress.named(name + " via Tidrapporten", from))
                 .setReplyTo(replyTo)
+                .addCc(cc.toArray(String[]::new))
+                .addBcc(bcc.toArray(String[]::new))
                 .addAttachment("Faktura-" + invoice.invoiceNumber() + ".pdf", document.pdf(), "application/pdf"));
     }
 }

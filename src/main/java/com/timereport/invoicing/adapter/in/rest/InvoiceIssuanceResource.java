@@ -34,7 +34,15 @@ public class InvoiceIssuanceResource {
     @Produces(MediaType.APPLICATION_JSON)
     @org.jboss.resteasy.reactive.ResponseHeader(name = "Cache-Control", value = "no-store")
     public InvoiceDeliveryResponse email(@PathParam("invoiceNumber") @Min(1) int number, @NotNull @Valid SendInvoiceRequest request) {
-        return InvoiceDeliveryResponse.from(invoices.send(number, request.recipient(), request.requestId()));
+        return InvoiceDeliveryResponse.from(invoices.send(number, request.recipient(), request.cc(), request.bcc(), request.requestId()));
+    }
+
+    @GET
+    @Path("/{invoiceNumber}/delivery-defaults")
+    @Produces(MediaType.APPLICATION_JSON)
+    @org.jboss.resteasy.reactive.ResponseHeader(name = "Cache-Control", value = "no-store")
+    public InvoiceDeliveryDefaultsResponse deliveryDefaults(@PathParam("invoiceNumber") @Min(1) int number) {
+        return InvoiceDeliveryDefaultsResponse.from(invoices.deliveryDefaults(number));
     }
 
     @PUT

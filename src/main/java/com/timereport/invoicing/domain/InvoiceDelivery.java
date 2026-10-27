@@ -3,11 +3,14 @@ package com.timereport.invoicing.domain;
 import lombok.Builder;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.UUID;
 
 @Builder
-public record InvoiceDelivery(UUID id, int invoiceNumber, String recipient, State state,
+public record InvoiceDelivery(UUID id, int invoiceNumber, String recipient, List<String> cc, List<String> bcc,
+                              State state,
                               Instant requestedAt, Instant completedAt) {
     public enum State {SENDING, SENT, FAILED}
 
@@ -16,6 +19,11 @@ public record InvoiceDelivery(UUID id, int invoiceNumber, String recipient, Stat
         Objects.requireNonNull(state);
         Objects.requireNonNull(requestedAt);
         recipient = email(recipient);
+        String primary = recipient;
+        cc = addresses(cc).stream().filter(address -> !address.equalsIgnoreCase(primary)).toList();
+        List<String> visible = cc;
+        bcc = addresses(bcc).stream().filter(address -> !address.equalsIgnoreCase(primary)
+                && visible.stream().noneMatch(copy -> copy.equalsIgnoreCase(address))).toList();
         if (invoiceNumber < 1) throw new IllegalArgumentException("Fakturanumret måste vara positivt.");
         if (state != State.SENDING && completedAt == null)
             throw new IllegalArgumentException("Utskicket saknar sluttid.");
@@ -30,6 +38,17 @@ public record InvoiceDelivery(UUID id, int invoiceNumber, String recipient, Stat
 
     public InvoiceDelivery complete(State result, Instant now) {
         if (result == State.SENDING) throw new IllegalArgumentException("Ogiltigt utskicksresultat.");
-        return new InvoiceDelivery(id, invoiceNumber, recipient, result, requestedAt, now);
+        return new InvoiceDelivery(id, invoiceNumber, recipient, cc, bcc, result, requestedAt, now);
+    }
+
+    public static List<String> addresses(List<String> values) {
+        if (values == null) return List.of();
+        if (values.size() > 10) throw new IllegalArgumentException("Ange högst tio adresser i varje kopielista.");
+        var addresses = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
+        for (String value : values) {
+            String address = email(value);
+            addresses.putIfAbsent(address, address);
+        }
+        return List.copyOf(addresses.values());
     }
 }

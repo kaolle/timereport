@@ -1,5 +1,4 @@
-import {authenticatedFetch} from './auth.js';
-import {today} from './domain.js';
+
 
 const $ = id => document.getElementById(id);
 const money = (amount, currency) => new Intl.NumberFormat('sv-SE', {
@@ -21,17 +20,32 @@ export function configureInvoiceDelivery({request}) {
     let revision = 0;
 
     function open({number, recipient = '', pdf = null, lastDelivery = null}) {
-        active = {number, pdf, requestId: crypto.randomUUID(), lastState: lastDelivery?.state, attemptRecipient: null};
+        active = {number, pdf, requestId: crypto.randomUUID(), lastState: lastDelivery?.state, attemptRecipients: null};
+        const opened = active;
         $('invoice-delivery-title').textContent = `Faktura ${number} är utfärdad`;
         $('invoice-delivery-download').checked = true;
         $('invoice-delivery-email').checked = false;
+        $('invoice-delivery-email').disabled = true;
         $('invoice-delivery-recipient').value = recipient;
         $('invoice-delivery-recipient').disabled = true;
         $('invoice-delivery-recipient').required = false;
+        for (const id of ['invoice-delivery-cc', 'invoice-delivery-bcc']) {
+            $(id).value = '';
+            $(id).disabled = true;
+        }
         $('invoice-delivery-error').textContent = '';
         $('invoice-download-status').textContent = '';
-        $('invoice-email-status').textContent = lastDelivery ? deliveryMessage(lastDelivery) : '';
+        $('invoice-email-status').textContent = 'Hämtar standardmottagare …';
         dialog.showModal();
+        void request(`/api/invoicing/invoices/${number}/delivery-defaults`).then(defaults => {
+            if (active !== opened || !dialog.open) return;
+            $('invoice-delivery-cc').value = (defaults.cc || []).join(', ');
+            $('invoice-delivery-bcc').value = (defaults.bcc || []).join(', ');
+            $('invoice-delivery-email').disabled = false;
+            $('invoice-email-status').textContent = lastDelivery ? deliveryMessage(lastDelivery) : '';
+        }).catch(() => {
+            if (active === opened && dialog.open) $('invoice-email-status').textContent = 'Standardmottagarna kunde inte hämtas. Stäng dialogen och försök igen för att skicka mejl. Du kan fortfarande ladda ner PDF:en.';
+        });
     }
 
     function deliveryMessage(delivery) {
@@ -63,6 +77,7 @@ export function configureInvoiceDelivery({request}) {
     $('invoice-delivery-email').addEventListener('change', event => {
         $('invoice-delivery-recipient').disabled = !event.target.checked;
         $('invoice-delivery-recipient').required = event.target.checked;
+        for (const id of ['invoice-delivery-cc', 'invoice-delivery-bcc']) $(id).disabled = !event.target.checked;
         if (event.target.checked) $('invoice-delivery-recipient').focus();
     });
     $('invoice-delivery-close').addEventListener('click', () => dialog.close());
@@ -99,18 +114,27 @@ export function configureInvoiceDelivery({request}) {
             }
             if (sendEmail) {
                 const recipient = $('invoice-delivery-recipient').value.trim();
+                const addresses = id => $(id).value.split(',').map(value => value.trim()).filter(Boolean);
+                const cc = addresses('invoice-delivery-cc');
+                const bcc = addresses('invoice-delivery-bcc');
+                const recipients = JSON.stringify({recipient, cc, bcc});
                 if (active.lastState) {
                     const message = active.lastState === 'SENT' ? 'Fakturan har redan lämnats till e-postservern. Vill du skicka ett nytt mejl?'
                         : 'Ett tidigare utskick saknar bekräftelse och kan ha kommit fram. Vill du göra ett nytt utskicksförsök?';
                     if (!window.confirm(message)) return;
                     active.requestId = crypto.randomUUID();
                     active.lastState = null;
-                } else if (active.attemptRecipient && active.attemptRecipient !== recipient) active.requestId = crypto.randomUUID();
-                active.attemptRecipient = recipient;
+                } else if (active.attemptRecipients && active.attemptRecipients !== recipients) {
+                    if (!window.confirm('Mottagarna har ändrats och ett tidigare utskick kan ha kommit fram. Vill du göra ett nytt utskick?')) return;
+                    active.requestId = crypto.randomUUID();
+                }
+                active.attemptRecipients = recipients;
                 $('invoice-email-status').textContent = 'Skickar fakturan …';
                 try {
                     const result = await request(`/api/invoicing/invoices/${active.number}/email`, 'POST', {
                         recipient,
+                        cc,
+                        bcc,
                         requestId: active.requestId
                     }, 60000);
                     active.lastState = result.state;
@@ -119,6 +143,8 @@ export function configureInvoiceDelivery({request}) {
                         $('invoice-delivery-email').checked = false;
                         $('invoice-delivery-recipient').disabled = true;
                         $('invoice-delivery-recipient').required = false;
+                        $('invoice-delivery-cc').disabled = true;
+                        $('invoice-delivery-bcc').disabled = true;
                     }
                     await refresh();
                 } catch (error) {

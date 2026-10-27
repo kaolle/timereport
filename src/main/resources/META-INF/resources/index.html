@@ -4,16 +4,16 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#183b35">
-    <meta name="application-version" content="49">
+    <meta name="application-version" content="50">
     <meta name="description" content="Registrera din arbetstid, även när nätet inte räcker till.">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Tidrapporten">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-    <link rel="stylesheet" href="/styles.css?v=49">
+    <link rel="stylesheet" href="/styles.css?v=50">
     <title>Tidrapporten</title>
-    <script type="module" src="/js/app.js?v=49"></script>
+    <script type="module" src="/js/app.js?v=50"></script>
 </head>
 <body>
     <a class="skip-link" href="#main">Till innehållet</a>
@@ -253,6 +253,10 @@
                         <div class="field"><label for="billing-customer-country">Land</label><input id="billing-customer-country" name="country" value="Sverige" maxlength="80" required></div>
                         <div class="billing-grid"><div class="field"><label for="billing-customer-org">Organisationsnummer</label><input id="billing-customer-org" name="organizationNumber" maxlength="40"></div><div class="field"><label for="billing-customer-vat">Momsregistreringsnummer</label><input id="billing-customer-vat" name="vatNumber" maxlength="40"></div></div>
                         <div class="field"><label for="billing-customer-email">Faktura-e-post</label><input id="billing-customer-email" name="invoiceEmail" type="email" maxlength="254"></div>
+                        <div class="field"><label for="billing-customer-contact-email">Kontaktpersonens
+                            e-post</label><input id="billing-customer-contact-email" name="contactEmail" type="email"
+                                                 maxlength="254">
+                            <p class="field-help">Föreslås som CC när fakturan skickas med e-post.</p></div>
                         <div class="billing-grid"><div class="field"><label for="billing-customer-ref">Er referens</label><input id="billing-customer-ref" name="customerReference" maxlength="160"></div><div class="field"><label for="billing-our-ref">Vår referens</label><input id="billing-our-ref" name="ourReference" maxlength="160"></div></div>
                         <div class="field"><label for="billing-customer-terms">Betalningsvillkor (dagar)</label><input id="billing-customer-terms" name="paymentTermsDays" type="number" min="0" max="365" value="30" required></div>
                         <h4>Kundkod (valfritt)</h4>
@@ -299,7 +303,15 @@
                 <div class="field"><label for="invoice-delivery-recipient">Till e-postadress</label><input
                         id="invoice-delivery-recipient" type="email" maxlength="254" disabled autocomplete="email">
                 </div>
-                <p class="field-help">Adressen föreslås från kunden. Ändringar här gäller bara detta utskick.</p>
+                <div class="field"><label for="invoice-delivery-cc">CC – kopia</label><input id="invoice-delivery-cc"
+                                                                                             type="email" multiple
+                                                                                             maxlength="2550" disabled>
+                    <p class="field-help">Kundens kontaktperson föreslås. Separera flera adresser med komma.</p></div>
+                <div class="field"><label for="invoice-delivery-bcc">BCC – dold kopia</label><input
+                        id="invoice-delivery-bcc" type="email" multiple maxlength="2550" disabled>
+                    <p class="field-help">Ditt företags e-post föreslås. Adresserna syns inte för övriga mottagare.</p>
+                </div>
+                <p class="field-help">Ändringar gäller bara detta utskick.</p>
             </fieldset>
             <p id="invoice-download-status" role="status"></p>
             <p id="invoice-email-status" role="status"></p>

@@ -67,10 +67,13 @@ async function setup(page, context) {
             json: [{
                 id: customerId,
                 name: 'Kunden AB',
-                customerNumber: '1', invoiceEmail: 'customer@example.test'
+                customerNumber: '1', invoiceEmail: 'customer@example.test', contactEmail: 'contact@example.test'
             }]
         });
         if (path === '/api/invoicing/invoice-numbering') return route.fulfill({json: {nextNumber: 1061}});
+        if (/\/api\/invoicing\/invoices\/\d+\/delivery-defaults$/.test(path)) return route.fulfill({
+            json: {cc: ['contact@example.test'], bcc: ['company@example.test']}
+        });
         if (path === '/api/invoicing/draft') return route.fulfill({json: draft});
         if (path === '/api/invoicing/draft/pdf') {
             state.previews.push(route.request().postDataJSON());
@@ -210,6 +213,30 @@ async function issueInvoice(page) {
     await expect(page.getByRole('dialog', {name: 'Faktura 1061 är utfärdad', exact: true})).toBeVisible();
 }
 
+test('copy recipients can be removed for an individual email', async ({page, context}) => {
+    const state = await setup(page, context);
+    await issueInvoice(page);
+    await page.getByLabel('Ladda ner fakturan som PDF', {exact: true}).uncheck();
+    await page.getByLabel('Skicka fakturan via e-post', {exact: true}).check();
+    await page.getByLabel('CC – kopia', {exact: true}).fill('');
+    await page.getByLabel('BCC – dold kopia', {exact: true}).fill('');
+    await page.getByRole('button', {name: 'Genomför valen', exact: true}).click();
+    await expect(page.locator('#invoice-email-status')).toContainText('Mejlet har lämnats');
+    expect(state.deliveryRequests[0]).toMatchObject({cc: [], bcc: []});
+});
+
+test('failed default lookup blocks email but still allows PDF download', async ({page, context}) => {
+    const state = await setup(page, context);
+    await context.route('**/delivery-defaults', route => route.fulfill({status: 503}));
+    await issueInvoice(page);
+    await expect(page.locator('#invoice-email-status')).toContainText('Standardmottagarna kunde inte hämtas');
+    await expect(page.getByLabel('Skicka fakturan via e-post', {exact: true})).toBeDisabled();
+    const downloaded = page.waitForEvent('download');
+    await page.getByRole('button', {name: 'Genomför valen', exact: true}).click();
+    expect((await downloaded).suggestedFilename()).toBe('Faktura-1061.pdf');
+    expect(state.mailSends).toBe(0);
+});
+
 test('issuing opens optional delivery and supports email and download together without issuing again', async ({
                                                                                                                   page,
                                                                                                                   context
@@ -226,6 +253,9 @@ test('issuing opens optional delivery and supports email and download together w
     await expect(page.getByLabel('Skicka fakturan via e-post', {exact: true})).not.toBeChecked();
     await expect(page.getByLabel('Till e-postadress', {exact: true})).toHaveValue('customer@example.test');
     await page.getByLabel('Skicka fakturan via e-post', {exact: true}).check();
+    await expect(page.getByLabel('CC – kopia', {exact: true})).toHaveValue('contact@example.test');
+    await expect(page.getByLabel('BCC – dold kopia', {exact: true})).toHaveValue('company@example.test');
+    await page.getByLabel('CC – kopia', {exact: true}).fill('contact@example.test, colleague@example.test');
     await page.getByLabel('Till e-postadress', {exact: true}).fill('edited@example.test');
     await page.screenshot({path: testInfo.outputPath('invoice-delivery.png')});
     const downloaded = page.waitForEvent('download');
@@ -233,6 +263,8 @@ test('issuing opens optional delivery and supports email and download together w
     expect((await downloaded).suggestedFilename()).toBe('Faktura-1061.pdf');
     await expect(page.locator('#invoice-email-status')).toContainText('e-postservern för edited@example.test');
     expect(state.mailSends).toBe(1);
+    expect(state.deliveryRequests[0].cc).toEqual(['contact@example.test', 'colleague@example.test']);
+    expect(state.deliveryRequests[0].bcc).toEqual(['company@example.test']);
     expect(state.issued).toBe(1);
     await page.getByRole('button', {name: 'Stäng', exact: true}).click();
     await page.getByRole('button', {name: 'Visa tidsunderlag', exact: true}).click();

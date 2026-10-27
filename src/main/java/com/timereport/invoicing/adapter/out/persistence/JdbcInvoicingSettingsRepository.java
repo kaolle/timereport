@@ -63,7 +63,7 @@ public class JdbcInvoicingSettingsRepository implements InvoicingSettingsReposit
     @Override
     public List<BillingCustomer> customers() {
         String sql = "SELECT id,customer_number,name,short_name,address_line,postal_code,city,country,organization_number,vat_number,"
-                + "invoice_email,customer_reference,our_reference,payment_terms_days FROM billing_customers WHERE account_id=? ORDER BY customer_number";
+                + "invoice_email,customer_reference,our_reference,payment_terms_days,contact_email FROM billing_customers WHERE account_id=? ORDER BY customer_number";
         try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(sql)) {
             statement.setObject(1, identity.accountId());
             try (var result = statement.executeQuery()) {
@@ -78,7 +78,7 @@ public class JdbcInvoicingSettingsRepository implements InvoicingSettingsReposit
     @Transactional
     public void createCustomer(BillingCustomer c) {
         String sql = "INSERT INTO billing_customers (id,account_id,customer_number,name,short_name,address_line,postal_code,city,country,"
-                + "organization_number,vat_number,invoice_email,customer_reference,our_reference,payment_terms_days) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                + "organization_number,vat_number,invoice_email,customer_reference,our_reference,payment_terms_days,contact_email) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
         try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(sql)) {
             bindCustomer(statement, c);
             statement.executeUpdate();
@@ -89,13 +89,15 @@ public class JdbcInvoicingSettingsRepository implements InvoicingSettingsReposit
     @Transactional
     public void updateCustomer(BillingCustomer c) {
         String sql = "UPDATE billing_customers SET customer_number=?,name=?,short_name=?,address_line=?,postal_code=?,city=?,country=?,"
-                + "organization_number=?,vat_number=?,invoice_email=?,customer_reference=?,our_reference=?,payment_terms_days=? WHERE id=? AND account_id=?";
+                + "organization_number=?,vat_number=?,invoice_email=?,customer_reference=?,our_reference=?,payment_terms_days=?,contact_email=? WHERE id=? AND account_id=?";
         try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(sql)) {
             statement.setString(1, c.customerNumber()); statement.setString(2, c.name()); statement.setString(3, c.shortName()); statement.setString(4, c.addressLine());
             statement.setString(5, c.postalCode()); statement.setString(6, c.city()); statement.setString(7, c.country());
             statement.setString(8, c.organizationNumber()); statement.setString(9, c.vatNumber()); statement.setString(10, c.invoiceEmail());
             statement.setString(11, c.customerReference()); statement.setString(12, c.ourReference()); statement.setInt(13, c.paymentTermsDays());
-            statement.setObject(14, c.id()); statement.setObject(15, identity.accountId());
+            statement.setString(14, c.contactEmail());
+            statement.setObject(15, c.id());
+            statement.setObject(16, identity.accountId());
             if (statement.executeUpdate() != 1) throw new InvoicingConflict("Kunden finns inte.");
         } catch (SQLException e) { throw databaseError(e); }
     }
@@ -155,6 +157,7 @@ public class JdbcInvoicingSettingsRepository implements InvoicingSettingsReposit
         s.setString(5, c.shortName()); s.setString(6, c.addressLine()); s.setString(7, c.postalCode()); s.setString(8, c.city()); s.setString(9, c.country());
         s.setString(10, c.organizationNumber()); s.setString(11, c.vatNumber()); s.setString(12, c.invoiceEmail());
         s.setString(13, c.customerReference()); s.setString(14, c.ourReference()); s.setInt(15, c.paymentTermsDays());
+        s.setString(16, c.contactEmail());
     }
 
     private SellerBillingProfile mapProfile(ResultSet r) throws SQLException {
@@ -172,7 +175,7 @@ public class JdbcInvoicingSettingsRepository implements InvoicingSettingsReposit
                 .city(r.getString("city")).country(r.getString("country")).organizationNumber(r.getString("organization_number"))
                 .vatNumber(r.getString("vat_number")).invoiceEmail(r.getString("invoice_email"))
                 .customerReference(r.getString("customer_reference")).ourReference(r.getString("our_reference"))
-                .paymentTermsDays(r.getInt("payment_terms_days")).build();
+                .paymentTermsDays(r.getInt("payment_terms_days")).contactEmail(r.getString("contact_email")).build();
     }
 
     private RuntimeException databaseError(SQLException error) {

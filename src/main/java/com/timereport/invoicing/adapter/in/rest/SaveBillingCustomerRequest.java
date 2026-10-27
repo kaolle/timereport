@@ -11,6 +11,7 @@ public record SaveBillingCustomerRequest(@NotBlank @Size(max = 40) String custom
         @NotBlank @Size(max = 80) String country, @Size(max = 40) String organizationNumber,
         @Size(max = 40) String vatNumber, @Email @Size(max = 254) String invoiceEmail,
         @Size(max = 160) String customerReference, @Size(max = 160) String ourReference,
-        @NotNull @Min(0) @Max(365) Integer paymentTermsDays) {
+                                         @NotNull @Min(0) @Max(365) Integer paymentTermsDays,
+                                         @Email @Size(max = 254) String contactEmail) {
     @Override public String toString() { return "SaveBillingCustomerRequest[redacted]"; }
 }

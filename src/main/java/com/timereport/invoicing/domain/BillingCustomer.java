@@ -8,7 +8,8 @@ import java.util.UUID;
 @Builder(toBuilder = true)
 public record BillingCustomer(UUID id, String customerNumber, String name, String shortName, String addressLine, String postalCode,
                              String city, String country, String organizationNumber, String vatNumber,
-                             String invoiceEmail, String customerReference, String ourReference, int paymentTermsDays) {
+                              String invoiceEmail, String customerReference, String ourReference, int paymentTermsDays,
+                              String contactEmail) {
     public BillingCustomer {
         Objects.requireNonNull(id, "Kund-ID krävs.");
         customerNumber = required(customerNumber, "Kundnummer krävs.");
@@ -22,6 +23,8 @@ public record BillingCustomer(UUID id, String customerNumber, String name, Strin
         organizationNumber = clean(organizationNumber);
         vatNumber = clean(vatNumber);
         invoiceEmail = clean(invoiceEmail);
+        contactEmail = clean(contactEmail);
+        if (!contactEmail.isBlank()) contactEmail = InvoiceDelivery.email(contactEmail);
         customerReference = clean(customerReference);
         ourReference = clean(ourReference);
         if (paymentTermsDays < 0 || paymentTermsDays > 365) throw new IllegalArgumentException("Betalningsvillkor ska vara 0–365 dagar.");

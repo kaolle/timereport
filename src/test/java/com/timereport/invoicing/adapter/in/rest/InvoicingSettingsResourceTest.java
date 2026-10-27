@@ -10,7 +10,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasItem;
 
 @QuarkusTest
 class InvoicingSettingsResourceTest {
@@ -38,6 +39,12 @@ class InvoicingSettingsResourceTest {
                 .post("/api/invoicing/customers").then().statusCode(201).body("name", equalTo("Customer AB"))
                 .extract().path("id");
         given().auth().oauth2(second).get("/api/invoicing/customers").then().statusCode(200).body("size()", equalTo(0));
+        var updatedCustomer = new java.util.HashMap<>(customer);
+        updatedCustomer.put("contactEmail", "contact@example.test");
+        given().auth().oauth2(first).contentType(ContentType.JSON).body(updatedCustomer)
+                .put("/api/invoicing/customers/" + customerId).then().statusCode(200).body("contactEmail", equalTo("contact@example.test"));
+        given().auth().oauth2(first).get("/api/invoicing/customers").then().statusCode(200)
+                .body("[0].contactEmail", equalTo("contact@example.test"));
 
         String code = "BILL-" + UUID.randomUUID();
         given().auth().oauth2(first).contentType(ContentType.JSON)

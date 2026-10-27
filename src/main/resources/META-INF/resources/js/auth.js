@@ -3,6 +3,13 @@ let account;
 let accessToken;
 let expiresAt = 0;
 let refreshPromise;
+let refreshFailure;
+let nextRefreshAt = 0;
+
+function sessionState(state) {
+    document.documentElement.dataset.sessionState = state;
+    window.dispatchEvent(new CustomEvent('auth-session-changed', {detail: state}));
+}
 
 export function rememberedAccount() {
     try {
@@ -50,15 +57,28 @@ function acceptLogin(result) {
     account = result.account;
     accessToken = result.accessToken;
     expiresAt = Date.now() + result.expiresIn * 1000;
+    refreshFailure = null;
+    nextRefreshAt = 0;
     localStorage.setItem(ACCOUNT_KEY, JSON.stringify(account));
+    sessionState('ready');
     return account;
 }
 
 async function refreshAccess() {
     if (!refreshPromise) {
+        if (refreshFailure && Date.now() < nextRefreshAt) throw refreshFailure;
+        sessionState('checking');
         const refresh = async () => acceptLogin(await authRequest('refresh'));
         // One rotation at a time across tabs. Never retry a consumed refresh credential.
         refreshPromise = (navigator.locks ? navigator.locks.request('timereport-auth-refresh', refresh) : refresh())
+            .catch(error => {
+                accessToken = null;
+                refreshFailure = error;
+                const rejected = [401, 403].includes(error.status);
+                nextRefreshAt = rejected ? Infinity : Date.now() + 5000;
+                sessionState(rejected ? 'expired' : 'unavailable');
+                throw error;
+            })
             .finally(() => {
                 refreshPromise = null;
             });
@@ -105,6 +125,12 @@ export async function requireAccount() {
     const email = document.getElementById('auth-email');
     const password = document.getElementById('auth-password');
     const local = rememberedAccount();
+    const url = new URL(location.href);
+    const forceLogin = url.searchParams.get('login') === '1';
+    if (forceLogin) {
+        url.searchParams.delete('login');
+        history.replaceState(null, '', url.pathname + url.search + url.hash);
+    }
     let emailVerificationRequired = true;
     let linkToken;
     const fragment = new URLSearchParams(location.hash.slice(1));
@@ -148,29 +174,27 @@ export async function requireAccount() {
             } catch { /* Keep email verification enabled when settings cannot be fetched. */ }
         })();
     }
-    if (!linkToken && navigator.onLine) {
+    if (!linkToken && !forceLogin && local) {
+        // Cached account identity selects local storage only. Every API call still
+        // waits for a verified access token belonging to this same account.
+        account = local;
+        panel.hidden = true;
+        main.hidden = false;
+        if (navigator.onLine) void refreshAccess().catch(() => {});
+        else sessionState('unavailable');
+        return account;
+    }
+    if (!linkToken && !forceLogin && navigator.onLine) {
         status.textContent = 'Återansluter till ditt konto…';
         try {
             const result = await refreshAccess();
             panel.hidden = true;
             main.hidden = false;
             return result;
-        } catch (error) {
+        } catch {
             accessToken = null;
-            if (local && ![401, 403].includes(error.status)) {
-                account = local;
-                panel.hidden = true;
-                main.hidden = false;
-                return account;
-            }
         }
         status.textContent = '';
-    }
-    if (!linkToken && !navigator.onLine && local) {
-        account = local;
-        panel.hidden = true;
-        main.hidden = false;
-        return account;
     }
     panel.hidden = false;
     main.hidden = true;
@@ -229,7 +253,11 @@ export async function requireAccount() {
 
 export function configureAccountTools(current) {
     document.getElementById('account-email').textContent = current.email;
-    document.getElementById('reauth').addEventListener('click', () => location.reload());
+    document.getElementById('reauth').addEventListener('click', () => {
+        const url = new URL(location.href);
+        url.searchParams.set('login', '1');
+        location.assign(url);
+    });
     document.getElementById('change-password-form').addEventListener('submit', async event => {
         event.preventDefault();
         const status = document.getElementById('password-status');

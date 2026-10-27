@@ -17,19 +17,29 @@ self.addEventListener('activate', event => {
     })());
 });
 
-// Refresh HTML and its scripts/styles together when online. A fresh HTML version
-// must not keep loading older modules from the service worker's shell cache.
-async function networkFirst(request, cacheKey) {
+// Prefer fresh assets, but a slow server must not block an already cached app.
+// Let the network request finish in the background to refresh the next opening.
+async function networkFirst(request, cacheKey, event) {
     const cache = await caches.open(CACHE);
-    try {
-        const response = await fetch(request, {cache: 'no-store'});
+    const cached = await cache.match(cacheKey);
+    const network = fetch(request, {cache: 'no-store'}).then(async response => {
         if (response.ok) {
-            await cache.put(cacheKey, response.clone());
+            await cache.put(cacheKey, response.clone()).catch(() => {});
             return response;
         }
-        return await cache.match(cacheKey) || response;
-    } catch {
-        return await cache.match(cacheKey) || Response.error();
+        return cached || response;
+    }).catch(() => cached || Response.error());
+    event.waitUntil(network.then(() => {}));
+    // An explicitly newer asset must never fall back to an older cached version.
+    const requestedVersion = new URL(request.url).searchParams.get('v');
+    if (!cached || requestedVersion && requestedVersion !== VERSION) return network;
+    let timer;
+    try {
+        return await Promise.race([network, new Promise(resolve => {
+            timer = setTimeout(() => resolve(cached), 750);
+        })]);
+    } finally {
+        clearTimeout(timer);
     }
 }
 
@@ -37,8 +47,8 @@ self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
     if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
     if (event.request.mode === 'navigate' && (url.pathname === '/' || url.pathname === '/index.html')) {
-        event.respondWith(networkFirst(event.request, '/index.html'));
+        event.respondWith(networkFirst(event.request, '/index.html', event));
     } else if (SHELL.includes(url.pathname)) {
-        event.respondWith(networkFirst(event.request, url.pathname));
+        event.respondWith(networkFirst(event.request, url.pathname, event));
     }
 });

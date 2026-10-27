@@ -1,7 +1,7 @@
 import {authenticatedFetch} from './auth.js';
 import {formatMinutes} from './domain.js';
 import {snapshot} from './storage.js';
-import {configureInvoiceDelivery} from './invoice-delivery.js?v=52';
+import {configureInvoiceDelivery} from './invoice-delivery.js?v=53';
 
 const $ = id => document.getElementById(id);
 let busy = false;

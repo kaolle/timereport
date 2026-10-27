@@ -134,9 +134,10 @@ retrying. Rejected changes stay local and can be retried after correcting the ca
 
 Installation instructions are available under **Installation**, which contains only
 information. Offline readiness is available under **Konto → Fler alternativ**. Wait for **Redo utan nät** before first offline use. The service worker
-caches the app shell, not API responses. While online, HTML, scripts and styles
-are fetched from the server and their cached copies are refreshed; cached assets
-are used when the network is unavailable. IndexedDB holds user data. Installation uses
+caches the app shell, not API responses. HTML, scripts and styles prefer the network;
+when a cached file exists, a slow request falls back to it after 0.75 seconds while
+the request continues updating the cache in the background. Explicitly newer asset
+versions require the network. IndexedDB holds user data. Installation uses
 the browser's install action; on iPhone use Safari's Share → Add to Home Screen.
 Service workers need HTTPS, except for localhost/loopback development. Opening the
 laptop's LAN IP over HTTP on a phone is not sufficient for offline installation;
@@ -336,12 +337,21 @@ Logout revokes that session; password changes and resets revoke all account sess
 Protected data requests also check session validity, so revocation takes effect
 without waiting for JWT expiry. Passwords use salted PBKDF2-HMAC-SHA256 (600,000 rounds).
 
-On return to the app, including a restored browser page, expired access tokens are
-renewed using the refresh cookie. Renewal allows 30 seconds for a cold start; the
-data request's timeout starts after renewal. Registration settings load independently.
-A temporary renewal/network failure during startup lets a remembered account open
-its local data; an authentication rejection still shows the login screen. Cached
-account information never authorizes server access.
+A remembered account opens its local time entries immediately, including after a
+reload while the browser reports a connection but the server is slow. Time entry and
+inline customer codes save locally while the refresh cookie renews the access token
+in the background. Renewal allows 30 seconds; API timeouts start after renewal.
+Temporary renewal failures retry after five seconds while the page is visible and
+online, without needing an offline/online event. Edits still respect the normal sync
+delay. An expired or revoked session stops automatic renewal and shows **Logga in
+igen**, preserving local entries until a successful login. **Konto → Logga in igen**
+also explicitly opens login instead of immediately reopening local mode.
+
+Cached account information only selects account-separated local storage; all API
+requests, including invoicing, company/customer settings and password changes,
+still require valid authentication. A different account returned by refresh cannot
+receive the local queue. First use, explicit logout and email reset/verification
+links continue to use the authentication screen. Registration settings load independently.
 
 All POST authentication requests require `X-Requested-With: timereport`. When an
 `Origin` header is present, it must exactly match `PUBLIC_URL`. Authentication is

@@ -94,6 +94,43 @@ test('mobile flow saves offline, survives reload and reopening, edits and delete
     expect(state.writes).toHaveLength(0);
 });
 
+test('a stalled server serves the cached shell and permits time and inline codes before token renewal', async ({page, context}) => {
+    const state = await mockApi(context);
+    await open(page);
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+    let release;
+    let stalledAssets = 0;
+    const waiting = new Promise(resolve => { release = resolve; });
+    await context.route('**/*', async route => {
+        const request = route.request();
+        const url = new URL(request.url());
+        if (url.origin === origin && (url.pathname === '/api/auth/refresh'
+            || request.serviceWorker() && (['/', '/index.html', '/styles.css'].includes(url.pathname)
+                || url.pathname.startsWith('/js/')))) {
+            if (url.pathname !== '/api/auth/refresh') stalledAssets++;
+            await waiting;
+        }
+        await route.fallback();
+    });
+    try {
+        await page.reload({waitUntil: 'domcontentloaded', timeout: 12000});
+        await expect(page.locator('#entry-fields')).toBeEnabled({timeout: 8000});
+        await expect(page.locator('#session-message')).toContainText('sparas lokalt');
+        expect(stalledAssets).toBeGreaterThan(0);
+        await page.locator('.week-day.today').click();
+        await page.locator('#start').fill('08:00');
+        await page.locator('#end').fill('17:00');
+        await page.locator('#customer-code').fill('SLOW-SERVER');
+        await expect(page.locator('#save-new-code')).toBeVisible();
+        await page.locator('#save-new-code').click();
+        await expect.poll(async () => (await snapshot(page)).entries[0]?.customerCode).toBe('SLOW-SERVER');
+        expect((await snapshot(page)).codes.some(code => code.code === 'SLOW-SERVER')).toBe(true);
+        expect(state.writes).toHaveLength(0);
+    } finally {
+        release();
+    }
+});
+
 test('local entries and pending writes survive a complete browser restart', async ({}, testInfo) => {
     const directory = testInfo.outputPath('browser-profile');
     let context = await chromium.launchPersistentContext(directory, { headless: true, viewport: { width: 390, height: 844 } });

@@ -4,11 +4,18 @@ const A = {accountId: '11111111-1111-4111-8111-111111111111', email: 'a@example.
 const B = {accountId: '22222222-2222-4222-8222-222222222222', email: 'b@example.test'};
 
 async function mock(context) {
-    const state = {account: null, calls: [], writes: []};
+    const state = {account: null, calls: [], writes: [], entries: [], refreshWait: null, refreshFailures: 0, acceptWrites: false};
     await context.route('**/api/**', async route => {
         const request = route.request();
         const path = new URL(request.url()).pathname;
         state.calls.push({path, headers: request.headers(), body: request.postData()});
+        if (path === '/api/auth/refresh') {
+            if (state.refreshWait) await state.refreshWait;
+            if (state.refreshFailures > 0) {
+                state.refreshFailures--;
+                return route.fulfill({status: 503});
+            }
+        }
         if (path === '/api/auth/login') {
             state.account = request.postDataJSON().email === B.email ? B : A;
         }
@@ -29,8 +36,15 @@ async function mock(context) {
         });
         if (request.method() !== 'GET') {
             state.writes.push({account: state.account, body: request.postData()});
+            if (state.acceptWrites && path.startsWith('/api/time-entries/') && request.method() === 'PUT') {
+                const body = request.postDataJSON();
+                const entry = {...body, id: path.split('/').at(-1), version: body.expectedVersion + 1};
+                state.entries = [...state.entries.filter(row => row.id !== entry.id), entry];
+                return route.fulfill({json: entry});
+            }
             return route.fulfill({status: 503});
         }
+        if (path === '/api/time-entries') return route.fulfill({json: state.entries});
         if (path === '/api/customer-codes') return route.fulfill({
             json: [{
                 code: 'FAIR1234',
@@ -114,11 +128,11 @@ test('a temporary refresh failure on reload opens remembered local data and can 
     await expect(page.locator('#auth-panel')).toBeHidden();
     await expect(page.locator('#entry-fields')).toBeEnabled();
     expect((await snapshot(page)).outbox).toHaveLength(1);
-    const result = await page.evaluate(async () => {
+    await expect.poll(() => page.evaluate(async () => {
         const {authenticatedFetch} = await import('/js/auth.js');
-        return (await authenticatedFetch('/api/customer-codes')).status;
-    });
-    expect(result).toBe(200);
+        try { return (await authenticatedFetch('/api/customer-codes')).status; }
+        catch { return 0; }
+    }), {timeout: 10000}).toBe(200);
 });
 
 test('returning to a restored page renews expired access before starting the API timeout', async ({page, context}) => {
@@ -140,6 +154,75 @@ test('returning to a restored page renews expired access before starting the API
         {timeout: 15000}).toBeGreaterThan(before);
     await expect(page.locator('#main')).toBeVisible();
     await expect(page.locator('#auth-panel')).toBeHidden();
+});
+
+test('a stalled refresh never blocks local time entry or inline codes and upload waits for authentication', async ({page, context}, testInfo) => {
+    const state = await mock(context);
+    await login(page);
+    state.acceptWrites = true;
+    let release;
+    state.refreshWait = new Promise(resolve => { release = resolve; });
+    try {
+        await page.reload();
+        await expect(page.locator('#entry-fields')).toBeEnabled({timeout: 3000});
+        await expect(page.locator('#session-message')).toContainText('sparas lokalt');
+        await page.locator('.week-day.today').click();
+        await page.locator('#start').fill('08:00');
+        await page.locator('#end').fill('17:00');
+        await page.locator('#customer-code').fill('COLD-START');
+        await expect(page.locator('#save-new-code')).toBeVisible();
+        await page.locator('#save-new-code').click();
+        await expect.poll(async () => (await snapshot(page)).entries[0]?.customerCode).toBe('COLD-START');
+        expect((await snapshot(page)).outbox).toHaveLength(1);
+        expect(state.writes).toHaveLength(0);
+        await page.screenshot({path: testInfo.outputPath('local-entry-while-reconnecting.png')});
+        // Strict server-side settings also wait for the token; remembered identity is no credential.
+        await page.getByRole('button', {name: 'Fakturering', exact: true}).click();
+        expect(state.calls.filter(call => call.path === '/api/invoicing/profile')).toHaveLength(0);
+    } finally {
+        state.refreshWait = null;
+        release();
+    }
+    await expect.poll(async () => (await snapshot(page)).outbox.length, {timeout: 10000}).toBe(0);
+    expect(state.writes).toHaveLength(1);
+    expect(JSON.parse(state.writes[0].body).customerCode).toBe('COLD-START');
+    expect(state.writes[0].account).toEqual(A);
+    await expect(page.locator('#session-status')).toBeHidden();
+});
+
+test('a temporarily unavailable refresh is retried without an online event or a new login', async ({page, context}) => {
+    const state = await mock(context);
+    await login(page);
+    await seedPending(page);
+    state.acceptWrites = true;
+    state.refreshFailures = 1;
+    await page.reload();
+    await expect(page.locator('#main')).toBeVisible();
+    await expect(page.locator('#connection')).toContainText('väntar på servern');
+    await expect.poll(async () => (await snapshot(page)).outbox.length, {timeout: 15000}).toBe(0);
+    await expect(page.locator('#session-status')).toBeHidden();
+    expect(state.calls.filter(call => call.path === '/api/auth/login')).toHaveLength(1);
+});
+
+test('a different refresh-cookie account cannot upload the remembered account queue', async ({page, context}) => {
+    const state = await mock(context);
+    await login(page);
+    await seedPending(page);
+    state.account = B;
+    state.acceptWrites = true;
+    await page.reload();
+    await expect(page.locator('#main')).toBeVisible();
+    await expect(page.locator('#session-login')).toBeVisible();
+    expect((await snapshot(page)).outbox).toHaveLength(1);
+    expect(state.writes).toHaveLength(0);
+    await page.locator('#session-login').click();
+    await expect(page.locator('#auth-panel')).toBeVisible();
+    await page.locator('#auth-email').fill(B.email);
+    await page.locator('#auth-password').fill('a sufficiently long password');
+    await page.locator('#auth-submit').click();
+    await expect(page.locator('#account-email')).toHaveText(B.email);
+    expect((await snapshot(page)).entries).toHaveLength(0);
+    expect(state.writes).toHaveLength(0);
 });
 
 test('offline queue survives reload and remains isolated on account switch', async ({page, context}) => {
@@ -169,11 +252,12 @@ test('session expiry never discards queued edits and logout hides local data', a
     await seedPending(page);
     state.account = null;
     await page.reload();
-    await expect(page.locator('#auth-panel')).toBeVisible();
-    await page.locator('#auth-offline').click();
     await expect(page.locator('#main')).toBeVisible();
+    await expect(page.locator('#session-login')).toBeVisible();
+    await expect(page.locator('#session-message')).toContainText('Logga in igen');
     expect((await snapshot(page)).outbox).toHaveLength(1);
     await expect(page.locator('#sync')).toBeEnabled();
+    await expect(page.locator('#refresh')).toBeEnabled();
     await page.getByRole('button', { name: 'Konto', exact: true }).click();
     await page.locator('#logout').click();
     await expect(page.locator('#auth-panel')).toBeVisible();

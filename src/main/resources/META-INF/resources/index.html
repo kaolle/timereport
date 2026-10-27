@@ -4,16 +4,16 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#183b35">
-    <meta name="application-version" content="52">
+    <meta name="application-version" content="53">
     <meta name="description" content="Registrera din arbetstid, även när nätet inte räcker till.">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Tidrapporten">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-    <link rel="stylesheet" href="/styles.css?v=52">
+    <link rel="stylesheet" href="/styles.css?v=53">
     <title>Tidrapporten</title>
-    <script type="module" src="/js/app.js?v=52"></script>
+    <script type="module" src="/js/app.js?v=53"></script>
 </head>
 <body>
     <a class="skip-link" href="#main">Till innehållet</a>
@@ -50,6 +50,10 @@
         <p class="field-help">Offlineuppgifter sparas separat per konto på den här enheten.</p>
     </section>
     <main id="main" hidden>
+        <div id="session-status" class="notice" role="status" hidden>
+            <span id="session-message"></span>
+            <a id="session-login" class="text-button" href="/?login=1" hidden>Logga in igen</a>
+        </div>
         <nav class="main-navigation" aria-label="Huvudmeny">
             <button type="button" data-view="time" aria-controls="time-view" aria-current="page">Tider</button>
             <button type="button" data-view="report" aria-controls="monthly-report">Månadsrapport</button>

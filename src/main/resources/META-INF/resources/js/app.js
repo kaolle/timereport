@@ -1,5 +1,5 @@
 import {configureMonthlyReport} from './report.js';
-import {configureInvoicingSettings} from './invoicing-settings.js?v=52';
+import {configureInvoicingSettings} from './invoicing-settings.js?v=53';
 import {configureAccountTools, logout, requireAccount} from './auth.js';
 import {formatMinutes, intervalsOverlap, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
 import {
@@ -83,6 +83,7 @@ let lastBillingLabelsRefreshAt = 0;
 let billingLabelsBusy = false;
 let syncing = false;
 let onlineStatus = null;
+let reconnectTimer;
 let codesBusy = false;
 let codesRequestRevision = 0;
 const changes = 'BroadcastChannel' in window ? new BroadcastChannel(`timereport-changes-${currentAccount.accountId}`) : null;
@@ -139,10 +140,22 @@ function element(tag, className, text) {
 }
 
 function connectionStatus() {
-    const offline = !navigator.onLine || onlineStatus === false;
+    const session = document.documentElement.dataset.sessionState;
+    const localOnly = session && session !== 'ready';
+    const offline = !navigator.onLine || onlineStatus === false || localOnly;
     $('connection').classList.toggle('offline', offline);
     $('connection').textContent = !navigator.onLine ? 'Utan nät · sparar lokalt'
+        : session === 'checking' ? 'Återansluter · sparar lokalt'
+        : session === 'expired' ? 'Logga in för att synka'
+        : session === 'unavailable' ? 'Sparar lokalt · väntar på servern'
         : onlineStatus === false ? 'Servern kan inte nås' : onlineStatus ? 'Ansluten' : 'Nät tillgängligt';
+    if ($('session-status')) {
+        $('session-status').hidden = !localOnly;
+        $('session-login').hidden = session !== 'expired';
+        $('session-message').textContent = session === 'expired'
+            ? 'Logga in igen för att synka. Du kan fortsätta registrera tid och lägga till kundkod i tidsformuläret lokalt.'
+            : 'Du kan registrera tid och lägga till kundkod i tidsformuläret. Ändringarna sparas lokalt och synkas när anslutningen är klar.';
+    }
     $('add-code').disabled = !navigator.onLine || codesBusy;
     renderCodes();
     renderSyncSummary();
@@ -934,14 +947,31 @@ desktopWeekLayout.addEventListener('change', () => {
     if (ready) renderWeek();
 });
 function refreshOnReturn() {
+    reconnectSoon();
     if (!ready || document.hidden || !navigator.onLine || refreshing || Date.now() - lastRefreshAt < 30000) return;
     void refresh().then(() => monthlyReport.refreshIfOpen());
 }
 
+function reconnectSoon() {
+    clearTimeout(reconnectTimer);
+    if (!ready || document.hidden || !navigator.onLine
+        || document.documentElement.dataset.sessionState !== 'unavailable') return;
+    reconnectTimer = setTimeout(async () => {
+        await syncPending();
+        await refresh();
+        reconnectSoon();
+    }, 5000);
+}
+
+window.addEventListener('auth-session-changed', () => {
+    connectionStatus();
+    reconnectSoon();
+});
+
 window.addEventListener('focus', refreshOnReturn);
 window.addEventListener('pageshow', refreshOnReturn);
 document.addEventListener('visibilitychange', refreshOnReturn);
-window.addEventListener('online', () => { onlineStatus = null; connectionStatus(); void syncPending().then(() => refresh()); });
+window.addEventListener('online', () => { onlineStatus = null; connectionStatus(); reconnectSoon(); void syncPending().then(() => refresh()); });
 window.addEventListener('billing-labels-updated', () => void refreshBillingLabels(true));
 window.addEventListener('billing-customer-codes-opened', () => void refreshCodes());
 window.addEventListener('offline', connectionStatus);
@@ -990,6 +1020,7 @@ async function start() {
     try {
         await openStorage();
         ready = true;
+        reconnectSoon();
         await reloadLocal();
         selectDefaultEntry();
         $('entry-fields').disabled = false;

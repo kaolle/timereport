@@ -1,7 +1,7 @@
 import {authenticatedFetch} from './auth.js';
 import {formatMinutes} from './domain.js';
 import {snapshot} from './storage.js';
-import {configureInvoiceDelivery} from './invoice-delivery.js?v=53';
+import {configureInvoiceDelivery} from './invoice-delivery.js?v=55';
 
 const $ = id => document.getElementById(id);
 let busy = false;
@@ -502,11 +502,10 @@ const customerFields = [
     {name: 'organizationNumber', label: 'Organisationsnummer', maxLength: 40},
     {name: 'vatNumber', label: 'Momsregistreringsnummer', maxLength: 40},
     {name: 'invoiceEmail', label: 'Faktura-e-post', maxLength: 254, type: 'email'},
-    {
-        name: 'contactEmail', label: 'Kontaktpersonens e-post', maxLength: 254, type: 'email',
-        help: 'Föreslås som CC när fakturan skickas med e-post.'
-    },
-    {name: 'customerReference', label: 'Er referens', maxLength: 160},
+    {legend: 'Kundens referens', fields: [
+        {name: 'customerReference', label: 'Namn', maxLength: 160},
+        {name: 'contactEmail', label: 'E-post', maxLength: 254, type: 'email'}
+    ], help: 'Namnet visas som ”Er referens” på fakturan. E-postadressen föreslås som CC när fakturan skickas med e-post.'},
     {name: 'ourReference', label: 'Vår referens', maxLength: 160},
     {name: 'paymentTermsDays', label: 'Betalningsvillkor (dagar)', type: 'number', max: 365, defaultValue: 30}
 ];
@@ -527,6 +526,20 @@ function renderCustomers() {
         const form = document.createElement('form');
         form.className = 'billing-form billing-customer-editor';
         for (const field of customerFields) {
+            if (field.fields) {
+                const group = node('fieldset', 'billing-reference');
+                const fields = node('div', 'billing-grid');
+                const help = node('p', 'field-help', field.help);
+                help.id = `customer-reference-help-${customer.id}`;
+                group.setAttribute('aria-describedby', help.id);
+                group.append(node('legend', '', field.legend));
+                for (const component of field.fields) {
+                    fields.append(createInput(component, customer[component.name], `customer-${customer.id}`));
+                }
+                group.append(fields, help);
+                form.append(group);
+                continue;
+            }
             form.append(createInput(field, customer[field.name], `customer-${customer.id}`,
                 ['customerNumber', 'name', 'addressLine', 'postalCode', 'city', 'country', 'paymentTermsDays'].includes(field.name)));
         }

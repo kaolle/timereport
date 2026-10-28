@@ -642,6 +642,10 @@ dialog p { font-size: 14px; color: var(--muted); }
 .invoicing-view > section { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 16px; }
 .billing-form { display: grid; gap: 12px; max-width: 680px; }
 .billing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.billing-reference { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.billing-reference legend { padding: 0 6px; color: var(--green); font-size: 14px; font-weight: 650; }
+.billing-reference .field { margin-bottom: 0; }
+.billing-reference > .field-help { margin: 10px 0 0; }
 .billing-checkbox { display: flex; align-items: center; gap: 9px; width: fit-content; }
 .billing-checkbox input { min-width: 20px; min-height: 20px; }
 .billing-add-customer { margin-top: 16px; }

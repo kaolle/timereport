@@ -235,8 +235,10 @@ or CSV export is introduced by this feature.
 Choose **Fakturering → Ditt företag** while online to configure seller details and
 the next invoice number. Use **Fakturering → Kunder** to add customers and manage
 their billing details. Each customer can have several customer codes, with a service
-description, hourly rate, and VAT rate per code. The optional customer field
-**Kontaktpersonens e-post** supplies the default CC address. Codes can be added in the customer
+description, hourly rate, and VAT rate per code.
+The framed **Kundens referens** section groups **Namn** and **E-post** when adding or
+editing a customer. The name appears as **Er referens** on the invoice; the email
+supplies the default CC address. Codes can be added in the customer
 form, in the customer's code section, or while registering time. Their optional
 short name appears beside the code in the time-entry selector, including offline
 after the label has been cached. A customer code is required for a time entry to be
@@ -280,7 +282,7 @@ invoice email and can be changed for that submission. Closing leaves the invoice
 issued and available under **Fakturering → Fakturor**.
 
 The delivery dialog loads default copy recipients for the selected invoice:
-the customer's **Kontaktpersonens e-post** becomes CC and the company's **E-post**
+the customer's **Kundens referens → E-post** becomes CC and the company's **E-post**
 becomes BCC. Defaults use the current customer/company settings, falling back to
 the archived invoice when a record is unavailable. CC and BCC can be edited for
 each submission; BCC is hidden from other email recipients. Enter comma-separated
@@ -352,6 +354,8 @@ requests, including invoicing, company/customer settings and password changes,
 still require valid authentication. A different account returned by refresh cannot
 receive the local queue. First use, explicit logout and email reset/verification
 links continue to use the authentication screen. Registration settings load independently.
+Login controls remain disabled until the client has installed its handlers and
+restored form defaults, so slow startup cannot overwrite an address being entered.
 
 All POST authentication requests require `X-Requested-With: timereport`. When an
 `Origin` header is present, it must exactly match `PUBLIC_URL`. Authentication is

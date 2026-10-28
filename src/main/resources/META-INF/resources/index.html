@@ -4,16 +4,16 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#183b35">
-    <meta name="application-version" content="53">
+    <meta name="application-version" content="55">
     <meta name="description" content="Registrera din arbetstid, även när nätet inte räcker till.">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Tidrapporten">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-    <link rel="stylesheet" href="/styles.css?v=53">
+    <link rel="stylesheet" href="/styles.css?v=55">
     <title>Tidrapporten</title>
-    <script type="module" src="/js/app.js?v=53"></script>
+    <script type="module" src="/js/app.js?v=55"></script>
 </head>
 <body>
     <a class="skip-link" href="#main">Till innehållet</a>
@@ -29,7 +29,7 @@
     <section id="auth-panel" class="panel auth-panel" aria-labelledby="auth-title">
         <h1 id="auth-title">Ditt konto i Tidrapporten</h1>
         <form id="auth-form">
-            <div class="field"><label for="auth-mode">Välj åtgärd</label><select id="auth-mode">
+            <div class="field"><label for="auth-mode">Välj åtgärd</label><select id="auth-mode" disabled>
                 <option value="login">Logga in</option>
                 <option value="register">Skapa konto</option>
                 <option value="forgot-password">Glömt lösenord</option>
@@ -38,13 +38,13 @@
             </select></div>
             <div class="field"><label for="auth-email">E-postadress</label><input id="auth-email" type="email"
                                                                                   autocomplete="username"
-                                                                                  maxlength="254" required></div>
+                                                                                  maxlength="254" required disabled></div>
             <div class="field"><label for="auth-password">Lösenord</label><input id="auth-password" type="password"
                                                                                  autocomplete="current-password"
-                                                                                 maxlength="128" required>
+                                                                                 maxlength="128" required disabled>
                 <p class="field-help">Nya lösenord ska ha minst 15 tecken.</p></div>
-            <button id="auth-submit" class="primary-button" type="submit">Logga in</button>
-            <p id="auth-status" role="status"></p>
+            <button id="auth-submit" class="primary-button" type="submit" disabled>Logga in</button>
+            <p id="auth-status" role="status">Förbereder inloggning…</p>
         </form>
         <button id="auth-offline" class="text-button" type="button" hidden>Fortsätt med mina lokala tider</button>
         <p class="field-help">Offlineuppgifter sparas separat per konto på den här enheten.</p>
@@ -257,11 +257,15 @@
                         <div class="field"><label for="billing-customer-country">Land</label><input id="billing-customer-country" name="country" value="Sverige" maxlength="80" required></div>
                         <div class="billing-grid"><div class="field"><label for="billing-customer-org">Organisationsnummer</label><input id="billing-customer-org" name="organizationNumber" maxlength="40"></div><div class="field"><label for="billing-customer-vat">Momsregistreringsnummer</label><input id="billing-customer-vat" name="vatNumber" maxlength="40"></div></div>
                         <div class="field"><label for="billing-customer-email">Faktura-e-post</label><input id="billing-customer-email" name="invoiceEmail" type="email" maxlength="254"></div>
-                        <div class="field"><label for="billing-customer-contact-email">Kontaktpersonens
-                            e-post</label><input id="billing-customer-contact-email" name="contactEmail" type="email"
-                                                 maxlength="254">
-                            <p class="field-help">Föreslås som CC när fakturan skickas med e-post.</p></div>
-                        <div class="billing-grid"><div class="field"><label for="billing-customer-ref">Er referens</label><input id="billing-customer-ref" name="customerReference" maxlength="160"></div><div class="field"><label for="billing-our-ref">Vår referens</label><input id="billing-our-ref" name="ourReference" maxlength="160"></div></div>
+                        <fieldset class="billing-reference" aria-describedby="billing-customer-reference-help">
+                            <legend>Kundens referens</legend>
+                            <div class="billing-grid">
+                                <div class="field"><label for="billing-customer-ref">Namn</label><input id="billing-customer-ref" name="customerReference" maxlength="160"></div>
+                                <div class="field"><label for="billing-customer-contact-email">E-post</label><input id="billing-customer-contact-email" name="contactEmail" type="email" maxlength="254"></div>
+                            </div>
+                            <p id="billing-customer-reference-help" class="field-help">Namnet visas som ”Er referens” på fakturan. E-postadressen föreslås som CC när fakturan skickas med e-post.</p>
+                        </fieldset>
+                        <div class="field"><label for="billing-our-ref">Vår referens</label><input id="billing-our-ref" name="ourReference" maxlength="160"></div>
                         <div class="field"><label for="billing-customer-terms">Betalningsvillkor (dagar)</label><input id="billing-customer-terms" name="paymentTermsDays" type="number" min="0" max="365" value="30" required></div>
                         <h4>Kundkod (valfritt)</h4>
                         <p class="field-help">Skapa en kundkod direkt när du lägger upp kunden. Du kan också skapa koder senare eller vid tidsregistrering.</p>

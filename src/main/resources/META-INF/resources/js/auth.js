@@ -248,6 +248,12 @@ export async function requireAccount() {
                 button.disabled = false;
             }
         });
+        // Visible HTML may arrive before the module graph. Enable interaction only
+        // after initialization has set defaults and installed the submit handler.
+        status.textContent = '';
+        for (const control of [mode, email, password, document.getElementById('auth-submit')]) {
+            control.disabled = false;
+        }
     });
 }
 

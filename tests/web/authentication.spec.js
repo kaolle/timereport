@@ -225,6 +225,37 @@ test('a different refresh-cookie account cannot upload the remembered account qu
     expect(state.writes).toHaveLength(0);
 });
 
+test('explicit login waits for its handlers before accepting input on a slow startup', async ({page, context}) => {
+    const state = await mock(context);
+    state.account = B;
+    await context.addInitScript(account => {
+        localStorage.setItem('timereport-account', JSON.stringify(account));
+    }, A);
+    let release;
+    const waiting = new Promise(resolve => { release = resolve; });
+    await context.route('**/js/app.js*', async route => {
+        await waiting;
+        await route.fallback();
+    });
+    try {
+        await page.goto('/?login=1', {waitUntil: 'commit'});
+        await expect(page.locator('#auth-panel')).toBeVisible();
+        await expect(page.locator('#auth-mode')).toBeDisabled();
+        await expect(page.locator('#auth-email')).toBeDisabled();
+        await expect(page.locator('#auth-password')).toBeDisabled();
+        await expect(page.locator('#auth-submit')).toBeDisabled();
+    } finally {
+        release();
+    }
+    await page.locator('#auth-email').fill(B.email);
+    await page.locator('#auth-password').fill('a sufficiently long password');
+    await page.locator('#auth-submit').click();
+    await expect(page.locator('#account-email')).toHaveText(B.email);
+    const login = state.calls.find(call => call.path === '/api/auth/login');
+    expect(JSON.parse(login.body).email).toBe(B.email);
+    expect((await snapshot(page)).entries).toHaveLength(0);
+});
+
 test('offline queue survives reload and remains isolated on account switch', async ({page, context}) => {
     const state = await mock(context);
     await login(page);

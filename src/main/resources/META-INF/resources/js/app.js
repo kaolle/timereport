@@ -1,22 +1,14 @@
+import {configureCustomerCodes} from './customer-codes.js';
+import {renderConnectionStatus, renderSyncSummary as renderPendingSummary} from './connection-status.js';
+import {configureSynchronization} from './synchronization.js';
 import {configureMonthlyReport} from './report.js';
-import {configureInvoicingSettings} from './invoicing-settings.js?v=55';
+import {configureAppShell, configureNavigation, prepareOffline} from './app-shell.js';
+import {configureInvoicingSettings} from './invoicing-settings.js';
 import {configureAccountTools, logout, requireAccount} from './auth.js';
-import {formatMinutes, intervalsOverlap, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
+import {formatMinutes, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
 import {
-    cacheBillingCodeLabels,
-    cacheCodes,
-    cacheCustomerCode,
-    cacheRange,
-    cacheVacationRange,
     deleteEntry,
-    markConflict,
-    markSyncFailed,
-    markSyncing,
-    markTimeEntryDeleted,
-    markTimeEntrySynced,
-    markVacationSynced,
     openStorage,
-    retryRejected,
     retryWithRemoteVersion,
     saveEntry,
     selectAccount,
@@ -24,33 +16,8 @@ import {
     snapshot,
     useRemoteTimeEntry
 } from './storage.js';
-import {
-    ApiError,
-    createCode,
-    fetchBillingCodeLabels,
-    fetchCodes,
-    fetchDay,
-    fetchRange,
-    fetchTimeEntry,
-    fetchVacationDays,
-    removeTimeEntry,
-    saveCode,
-    setVacationDayRemote,
-    uploadTimeEntry
-} from './api.js';
 
-const applicationVersion = document.querySelector('meta[name="application-version"]')?.content;
-const versionLabel = document.getElementById('app-version-label');
-if (versionLabel && applicationVersion) versionLabel.textContent = `(v ${applicationVersion})`;
-document.getElementById('force-reload')?.addEventListener('click', () => {
-    if (!navigator.onLine) {
-        const readiness = document.getElementById('offline-readiness');
-        if (readiness) readiness.textContent = 'Anslut till nätet innan du hämtar en ny appversion.';
-        else window.alert('Anslut till nätet innan du hämtar en ny appversion.');
-        return;
-    }
-    window.location.assign('/force-update.html');
-});
+configureAppShell();
 const currentAccount = await requireAccount();
 selectAccount(currentAccount.accountId);
 configureAccountTools(currentAccount);
@@ -59,10 +26,7 @@ let data = { entries: [], codes: [], billingLabels: [], outbox: [], vacationDays
 let viewedDate = today();
 let selectedDate = null;
 let autosaveTimer;
-let syncTimer;
-let syncNotBefore = 0;
 let proposedCustomerCode;
-let renderedCodes;
 let inputRevision = 0;
 let autoSelectEnabled = false;
 let formOpen = false;
@@ -77,34 +41,52 @@ let deleting = null;
 let formDirty = false;
 let ready = false;
 let busy = false;
-let refreshing = false;
-let lastRefreshAt = 0;
-let lastBillingLabelsRefreshAt = 0;
-let billingLabelsBusy = false;
-let syncing = false;
-let onlineStatus = null;
-let reconnectTimer;
-let codesBusy = false;
-let codesRequestRevision = 0;
 const changes = 'BroadcastChannel' in window ? new BroadcastChannel(`timereport-changes-${currentAccount.accountId}`) : null;
 
 const monthlyReport = configureMonthlyReport({onCache: reloadLocal});
 const invoicingSettings = configureInvoicingSettings();
 
-function showView(view) {
-    document.querySelectorAll('[data-view-panel]').forEach(panel => {
-        panel.hidden = panel.dataset.viewPanel !== view;
-    });
-    document.querySelectorAll('.main-navigation [data-view]').forEach(button => {
-        if (button.dataset.view === view) button.setAttribute('aria-current', 'page');
-        else button.removeAttribute('aria-current');
-    });
+const synchronization = configureSynchronization({
+    isReady: () => ready,
+    getDate: () => viewedDate,
+    onLocalChange: reloadLocal,
+    onRefreshed(successful) {
+        void refreshBillingLabels();
+        selectDefaultEntry();
+        if (successful) {
+            if (!editing && !formDirty) $('deduction').value = dayEntries().length ? 0 : 30;
+            preview();
+        }
+    },
+    onStateChange() {
+        $('sync').disabled = synchronization.syncing;
+        $('refresh').disabled = synchronization.refreshing;
+        connectionStatus();
+    },
+    onSyncStatus: text => {
+        $('sync-status').textContent = text;
+    },
+    onNotice: text => message('notice', text),
+    notifyChanges: () => changes?.postMessage('changed'),
+    onReturn: () => monthlyReport.refreshIfOpen()
+});
+const {scheduleSync, syncPending, refresh, reconnectSoon} = synchronization;
+
+const customerCodes = configureCustomerCodes({
+    getData: () => data,
+    getEditing: () => editing,
+    isNewCustomerCode,
+    onLocalChange: reloadLocal,
+    onStateChange: connectionStatus,
+    onConnected: () => synchronization.setOnlineStatus(true),
+    notifyChanges: () => changes?.postMessage('changed')
+});
+const {renderCodes, refreshCodes, refreshBillingLabels} = customerCodes;
+
+
+configureNavigation(view => {
     if (view === 'report') void monthlyReport.refreshIfOpen();
     if (view === 'invoicing') void invoicingSettings.refreshIfOpen();
-}
-
-document.querySelectorAll('.main-navigation [data-view]').forEach(button => {
-    button.addEventListener('click', () => showView(button.dataset.view));
 });
 
 function message(id, text) {
@@ -140,126 +122,13 @@ function element(tag, className, text) {
 }
 
 function connectionStatus() {
-    const session = document.documentElement.dataset.sessionState;
-    const localOnly = session && session !== 'ready';
-    const offline = !navigator.onLine || onlineStatus === false || localOnly;
-    $('connection').classList.toggle('offline', offline);
-    $('connection').textContent = !navigator.onLine ? 'Utan nät · sparar lokalt'
-        : session === 'checking' ? 'Återansluter · sparar lokalt'
-        : session === 'expired' ? 'Logga in för att synka'
-        : session === 'unavailable' ? 'Sparar lokalt · väntar på servern'
-        : onlineStatus === false ? 'Servern kan inte nås' : onlineStatus ? 'Ansluten' : 'Nät tillgängligt';
-    if ($('session-status')) {
-        $('session-status').hidden = !localOnly;
-        $('session-login').hidden = session !== 'expired';
-        $('session-message').textContent = session === 'expired'
-            ? 'Logga in igen för att synka. Du kan fortsätta registrera tid och lägga till kundkod i tidsformuläret lokalt.'
-            : 'Du kan registrera tid och lägga till kundkod i tidsformuläret. Ändringarna sparas lokalt och synkas när anslutningen är klar.';
-    }
-    $('add-code').disabled = !navigator.onLine || codesBusy;
+    renderConnectionStatus({onlineStatus: synchronization.onlineStatus, codesBusy: customerCodes.busy});
     renderCodes();
     renderSyncSummary();
 }
 
 function renderSyncSummary() {
-    const pending = data.outbox.length + data.vacationOutbox.length;
-    const problem = data.entries.find(entry => entry.syncError);
-    message('sync-summary', problem?.syncError || (pending
-        ? `${pending} ${pending === 1 ? 'ändring sparad' : 'ändringar sparade'} lokalt · ${!navigator.onLine || onlineStatus === false ? 'väntar på anslutning' : 'synkas automatiskt'}.`
-        : ''));
-}
-
-function renderCodes() {
-    const list = $('customer-codes');
-    const codes = data.codes.filter(code => code.active || code.code === editing?.customerCode)
-        .sort((a, b) => a.code.localeCompare(b.code, 'sv'));
-    const shortNames = new Map((data.billingLabels || []).map(label => [label.code, label.customerShortName]));
-    const signature = JSON.stringify(codes.map(code => [code.code, code.active, shortNames.get(code.code) || '']));
-    if (signature !== renderedCodes) {
-        list.replaceChildren(new Option('Välj kod…', ''));
-        for (const code of codes) list.add(new Option(`${code.code}${shortNames.has(code.code) ? ` · ${shortNames.get(code.code)}` : ''}${code.active ? '' : ' (inaktiv)'}`, code.code));
-        renderedCodes = signature;
-    }
-    list.disabled = !codes.length;
-    $('code-help').textContent = 'Kundkod krävs för att tiden ska komma med på fakturaunderlag. Lämna tomt om tiden inte ska faktureras. En ny kod måste bekräftas med sparaknappen, även offline.';
-    if (!isNewCustomerCode()) $('save-new-code').hidden = true;
-    const activeCodes = data.codes.filter(code => code.active);
-    $('codes-status').textContent = activeCodes.length === 1 ? '1 aktiv kundkod.' : `${activeCodes.length} aktiva kundkoder.`;
-    const catalog = [...data.codes].sort((first, second) => first.code.localeCompare(second.code, 'sv'));
-    for (const [id, active] of [['code-list', true], ['removed-code-list', false]]) {
-        $(id).replaceChildren(...catalog.filter(code => code.active === active).map(code => {
-            const item = element('li', '');
-            item.dataset.code = code.code;
-            const info = element('div', 'code-info');
-            info.append(element('strong', '', code.code), element('span', '', code.version === 0
-                ? 'Väntar på synkning' : active ? 'Aktiv' : 'Borttagen'));
-            const button = element('button', active ? 'text-button remove-code' : 'secondary-button', active ? 'Ta bort' : 'Återställ');
-            button.type = 'button';
-            const pending = active && data.entries.some(entry => !entry.deleted && entry.customerCode === code.code && entry.syncState !== 'synced');
-            button.disabled = codesBusy || !navigator.onLine || code.version === 0 || pending;
-            if (pending || code.version === 0) button.title = 'Vänta tills tider med kundkoden har synkats.';
-            else if (!navigator.onLine) button.title = 'Anslut till nätet för att ändra kundkoder.';
-            button.setAttribute('aria-label', `${active ? 'Ta bort' : 'Återställ'} kundkod ${code.code}`);
-            button.addEventListener('click', () => void setCodeActive(code, !active));
-            item.append(info, button);
-            return item;
-        }));
-    }
-    $('removed-codes').hidden = !catalog.some(code => !code.active);
-}
-
-async function refreshCodes() {
-    if (!navigator.onLine || codesBusy) return;
-    const revision = ++codesRequestRevision;
-    try {
-        const codes = await fetchCodes();
-        if (revision !== codesRequestRevision) return;
-        await cacheCodes(codes);
-        await reloadLocal();
-    } catch (error) {
-        if (revision === codesRequestRevision) message('code-error', error.message || 'Kundkoderna kunde inte hämtas.');
-    }
-}
-
-async function refreshBillingLabels(force = false) {
-    if (!navigator.onLine || billingLabelsBusy || !force && Date.now() - lastBillingLabelsRefreshAt < 300000) return;
-    billingLabelsBusy = true;
-    try {
-        await cacheBillingCodeLabels(await fetchBillingCodeLabels());
-        lastBillingLabelsRefreshAt = Date.now();
-        await reloadLocal();
-    } catch {
-        // Cached labels remain available when billing settings cannot be reached.
-    } finally { billingLabelsBusy = false; }
-}
-
-async function setCodeActive(code, active) {
-    if (codesBusy || !navigator.onLine) return;
-    if (!active && data.entries.some(entry => !entry.deleted && entry.customerCode === code.code && entry.syncState !== 'synced')) {
-        message('code-error', 'Vänta tills tider med kundkoden har synkats innan du tar bort den.');
-        return;
-    }
-    if (!active && !window.confirm(`Ta bort kundkod ”${code.code}”? Tidigare tidsregistreringar och rapporter behåller koden.`)) return;
-    codesBusy = true;
-    ++codesRequestRevision;
-    message('code-error', '');
-    connectionStatus();
-    try {
-        await cacheCustomerCode(await saveCode(code.code, active, code.version));
-        await reloadLocal();
-        changes?.postMessage('changed');
-        message('notice', active ? `Kundkoden ”${code.code}” är återställd.`
-            : `Kundkoden ”${code.code}” är borttagen från valen. Tidigare registreringar finns kvar.`);
-    } catch (error) {
-        if (error.status === 409) {
-            codesBusy = false;
-            await refreshCodes();
-            message('code-error', 'Kundkoden har ändrats på servern. Listan har uppdaterats; försök igen.');
-        } else message('code-error', error.message || 'Kundkoden kunde inte ändras. Försök igen.');
-    } finally {
-        codesBusy = false;
-        connectionStatus();
-    }
+    renderPendingSummary(data, synchronization.onlineStatus);
 }
 
 function renderWeek() {
@@ -457,106 +326,6 @@ async function resolveConflict(action) {
     catch (error) { message('notice', error.message || 'Konflikten kunde inte hanteras.'); }
 }
 
-function scheduleSync(delay = 5000) {
-    clearTimeout(syncTimer);
-    syncNotBefore = Date.now() + delay;
-    syncTimer = setTimeout(() => void syncPending(), delay);
-}
-
-async function syncPending(manual = false) {
-    if (!ready || syncing || !navigator.onLine) return;
-    if (!manual && Date.now() < syncNotBefore) {
-        clearTimeout(syncTimer);
-        syncTimer = setTimeout(() => void syncPending(), syncNotBefore - Date.now());
-        return;
-    }
-    clearTimeout(syncTimer);
-    if (manual) syncNotBefore = 0;
-    syncing = true;
-    $('sync').disabled = true;
-    try {
-        if (manual) await retryRejected();
-        let processed = 0;
-        while (processed++ < 100 && navigator.onLine) {
-            // Let an in-flight request finish, then pause if new edits arrived.
-            if (!manual && Date.now() < syncNotBefore) break;
-            const { outbox, vacationOutbox } = await snapshot();
-            const item = outbox.find(row => row.state === 'pending' || row.state === 'sending');
-            if (!item) {
-                const vacation = vacationOutbox[0];
-                if (!vacation) break;
-                try {
-                    await setVacationDayRemote(vacation.date, vacation.vacation);
-                    await markVacationSynced(vacation.date, vacation.localRevision);
-                    await reloadLocal();
-                    changes?.postMessage('changed');
-                    continue;
-                } catch (error) {
-                    onlineStatus = error instanceof ApiError && error.status >= 500 ? false : true;
-                    break;
-                }
-            }
-            const claim = await markSyncing(item);
-            if (!claim) { await reloadLocal(); continue; }
-            if (claim.discard) { await reloadLocal(); continue; }
-            try {
-                if (claim.operation === 'put' || claim.operation === 'delete-after-create') {
-                    const sent = claim.operation === 'put' ? claim.entry : (await snapshot()).entries.find(row => row.id === claim.id);
-                    const result = await uploadTimeEntry(sent, claim.expectedVersion);
-                    await markTimeEntrySynced(claim.id, claim.localRevision, result);
-                } else {
-                    await removeTimeEntry(claim.id, claim.expectedVersion);
-                    await markTimeEntryDeleted(claim.id, claim.localRevision);
-                }
-            } catch (error) {
-                if (error instanceof ApiError && error.status === 409) {
-                    let remote = null;
-                    try { remote = await fetchTimeEntry(claim.id); }
-                    catch (readError) {
-                        if (readError instanceof ApiError && readError.status === 404) remote = null;
-                        else {
-                            await markSyncFailed(claim.id, claim.localRevision, 'Serverns version kunde inte hämtas. Försök synka igen.', false);
-                            onlineStatus = false;
-                            break;
-                        }
-                    }
-                    const current = (await snapshot()).entries.find(row => row.id === claim.id);
-                    let overlaps = [];
-                    if (claim.operation === 'put' && !remote) {
-                        try { overlaps = (await fetchDay(current.date)).filter(row => row.id !== current.id && intervalsOverlap(current, row)); } catch {}
-                    }
-                    if (!remote && claim.operation === 'delete') {
-                        await markTimeEntryDeleted(claim.id, claim.localRevision);
-                    } else {
-                        await markConflict(claim.id, claim.localRevision, { message: overlaps.length ? 'Tiden överlappar en annan registrering på servern.' : 'Registreringen ändrades på servern. Välj vilken version som ska behållas.', serverEntry: remote, overlaps });
-                    }
-                } else {
-                    const rejected = error instanceof ApiError && error.status >= 400 && error.status < 500 && ![401, 403, 429].includes(error.status);
-                    await markSyncFailed(claim.id, claim.localRevision, error.message || 'Överföringen misslyckades.', rejected);
-                    break;
-                }
-                onlineStatus = true;
-            }
-            await reloadLocal();
-            changes?.postMessage('changed');
-        }
-    } catch (error) {
-        onlineStatus = false;
-        $('sync-status').textContent = error.message || 'Synkningen avbröts. Dina ändringar finns kvar lokalt.';
-    } finally {
-        await reloadLocal().catch(() => {});
-        syncing = false;
-        $('sync').disabled = false;
-        connectionStatus();
-        if (onlineStatus === true) {
-            const rejected = data.entries.find(entry => entry.syncState === 'rejected');
-            const pending = data.outbox.length + data.vacationOutbox.length;
-            $('sync-status').textContent = rejected ? rejected.syncError : pending
-                ? `${pending} ändringar väntar. Tryck för att försöka igen.` : 'Alla tider är synkroniserade.';
-        }
-    }
-}
-
 async function reloadLocal() {
     data = await snapshot();
     monthlyReport.render(data);
@@ -647,45 +416,6 @@ async function editEntry(entry) {
     renderEntryChoices(dayEntries());
     $('form-title').scrollIntoView({ block: 'start', behavior: 'auto' });
     $('start').focus({ preventScroll: true });
-}
-
-async function refresh(showFeedback = false) {
-    if (!ready || refreshing) return;
-    if (!navigator.onLine) {
-        connectionStatus();
-        if (showFeedback) message('notice', 'Du är offline. Tidigare hämtade uppgifter och dina lokala ändringar finns kvar.');
-        return;
-    }
-    refreshing = true;
-    lastRefreshAt = Date.now();
-    $('refresh').disabled = true;
-    const date = viewedDate;
-    try {
-        await syncPending();
-        const { start, end } = weekBounds(date);
-        const [codes, entries, vacations] = await Promise.allSettled([fetchCodes(), fetchRange(start, end), fetchVacationDays(start, end)]);
-        if (codes.status === 'fulfilled') await cacheCodes(codes.value);
-        if (entries.status === 'fulfilled') await cacheRange(start, end, entries.value);
-        if (vacations.status === 'fulfilled') await cacheVacationRange(start, end, vacations.value);
-        await reloadLocal();
-        void refreshBillingLabels();
-        selectDefaultEntry();
-        changes?.postMessage('changed');
-        const failed = [codes, entries, vacations].find(result => result.status === 'rejected');
-        if (failed) throw failed.reason;
-        onlineStatus = true;
-        if (!editing && !formDirty) $('deduction').value = dayEntries().length ? 0 : 30;
-        preview();
-        if (showFeedback) message('notice', 'Veckans tider och kundkoder är uppdaterade.');
-    } catch {
-        onlineStatus = false;
-        if (showFeedback) message('notice', 'Servern kunde inte nås. Du kan fortsätta med dina lokalt sparade uppgifter.');
-    } finally {
-        refreshing = false;
-        $('refresh').disabled = false;
-        connectionStatus();
-        if (date !== viewedDate && navigator.onLine) void refresh();
-    }
 }
 
 async function chooseDate(date) {
@@ -905,29 +635,6 @@ $('confirm-delete').addEventListener('click', async () => {
         renderCodes();
     }
 });
-$('code-form').addEventListener('submit', async event => {
-    event.preventDefault();
-    message('code-error', '');
-    if (codesBusy || !navigator.onLine) return;
-    const code = $('new-code').value.trim();
-    if (!code) { message('code-error', 'Ange en kundkod.'); return; }
-    codesBusy = true;
-    ++codesRequestRevision;
-    connectionStatus();
-    try {
-        await cacheCustomerCode(await createCode(code));
-        await reloadLocal();
-        changes?.postMessage('changed');
-        $('new-code').value = '';
-        onlineStatus = true;
-        message('notice', 'Kundkoden är sparad på servern och tillgänglig offline.');
-    } catch (error) {
-        message('code-error', error.status === 409 ? 'Kundkoden finns redan. Om den är borttagen kan du återställa den under Borttagna kundkoder.' : error.message || 'Kundkoden kunde inte sparas.');
-    } finally {
-        codesBusy = false;
-        connectionStatus();
-    }
-});
 $('export').addEventListener('click', async () => {
     try {
         const contents = { schemaVersion: 1, exportedAt: new Date().toISOString(), ...await snapshot() };
@@ -946,74 +653,11 @@ $('export').addEventListener('click', async () => {
 desktopWeekLayout.addEventListener('change', () => {
     if (ready) renderWeek();
 });
-function refreshOnReturn() {
-    reconnectSoon();
-    if (!ready || document.hidden || !navigator.onLine || refreshing || Date.now() - lastRefreshAt < 30000) return;
-    void refresh().then(() => monthlyReport.refreshIfOpen());
-}
-
-function reconnectSoon() {
-    clearTimeout(reconnectTimer);
-    if (!ready || document.hidden || !navigator.onLine
-        || document.documentElement.dataset.sessionState !== 'unavailable') return;
-    reconnectTimer = setTimeout(async () => {
-        await syncPending();
-        await refresh();
-        reconnectSoon();
-    }, 5000);
-}
-
-window.addEventListener('auth-session-changed', () => {
-    connectionStatus();
-    reconnectSoon();
-});
-
-window.addEventListener('focus', refreshOnReturn);
-window.addEventListener('pageshow', refreshOnReturn);
-document.addEventListener('visibilitychange', refreshOnReturn);
-window.addEventListener('online', () => { onlineStatus = null; connectionStatus(); reconnectSoon(); void syncPending().then(() => refresh()); });
-window.addEventListener('billing-labels-updated', () => void refreshBillingLabels(true));
-window.addEventListener('billing-customer-codes-opened', () => void refreshCodes());
 window.addEventListener('offline', connectionStatus);
 window.addEventListener('beforeunload', event => {
     if (formDirty) { event.preventDefault(); event.returnValue = ''; }
 });
 changes?.addEventListener('message', () => { if (ready) reloadLocal().catch(() => message('fatal', 'Lagringen kunde inte läsas. Ladda om sidan.')); });
-
-async function prepareOffline() {
-    const reloadButton = $('force-reload');
-    if (!window.isSecureContext || !('serviceWorker' in navigator)) {
-        $('offline-readiness').textContent = 'Offlineöppning kräver HTTPS eller localhost och stöd för service workers.';
-        return;
-    }
-    try {
-        const version = document.querySelector('meta[name="application-version"]')?.content || '1';
-        const registration = await navigator.serviceWorker.register(`/sw.js?v=${encodeURIComponent(version)}`, { updateViaCache: 'none' });
-        const showWaitingUpdate = () => {
-            if (registration.waiting && navigator.serviceWorker.controller) {
-                reloadButton.textContent = '↻';
-                reloadButton.setAttribute('aria-label', `Uppdatera appen till version ${version}`);
-                reloadButton.title = `Uppdatera appen till version ${version}`;
-                $('offline-readiness').textContent = 'En ny appversion är redo. Dina sparade tidsregistreringar lämnas kvar.';
-            }
-        };
-        const watchInstall = () => {
-            const worker = registration.installing;
-            if (!worker) return;
-            worker.addEventListener('statechange', () => {
-                if (worker.state === 'installed') showWaitingUpdate();
-            });
-        };
-        registration.addEventListener('updatefound', watchInstall);
-        watchInstall();
-        await navigator.serviceWorker.ready;
-        $('offline-readiness').textContent = 'Redo utan nät. Du kan nu stänga och öppna appen offline.';
-        showWaitingUpdate();
-        void registration.update().catch(() => {});
-    } catch {
-        $('offline-readiness').textContent = 'Appen är inte klar för offlineöppning. Öppna sidan igen när du har anslutning.';
-    }
-}
 
 async function start() {
     connectionStatus();
@@ -1035,7 +679,7 @@ async function start() {
 }
 
 $('logout').addEventListener('click', async () => {
-    if (busy || syncing || refreshing) {
+    if (busy || synchronization.syncing || synchronization.refreshing) {
         message('notice', 'Vänta tills pågående sparande är klart.');
         return;
     }

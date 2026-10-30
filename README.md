@@ -165,13 +165,35 @@ automatic backup/restore feature. Persistent browser storage is requested after 
 save when supported, but the browser may decline it.
 
 Web files live under `src/main/resources/META-INF/resources/`. There are no runtime
-JavaScript dependencies or frontend build step. Modules separate calculation,
-IndexedDB storage, API calls, and UI. When changing shell assets, bump
-`application-version` in `index.html` and `force-update.html`, the asset URL versions
-in those pages, the invoicing module import in `js/app.js`, and the delivery module
-import in `js/invoicing-settings.js`. The service worker
+JavaScript dependencies or separate frontend build step. Modules separate calculation,
+IndexedDB storage, API calls, and UI. When changing shell assets, bump only
+`APP_VERSION` in `src/main/resources/META-INF/resources/js/version.js`.
+The app uses it for metadata, the displayed version, the stylesheet URL, and
+service-worker registration. JavaScript modules use stable URLs and the service
+worker's network-first, versioned app cache. The standalone update page imports
+the same value. No Maven resource filtering or generated web files are needed;
+development, browser tests and production use the same source file. The service worker
 cache version comes from the registration URL's `v` parameter. Updates activate after all existing app tabs/windows close;
 they do not clear IndexedDB or force-reload an unsaved form.
+
+The web modules have explicit responsibilities:
+
+| Module                  | Responsibility                                                                             |
+|-------------------------|--------------------------------------------------------------------------------------------|
+| `app.js`                | Time-entry form, week view, and wiring the controllers together                            |
+| `synchronization.js`    | Queued uploads, server-to-cache refresh, conflicts, retry scheduling, and reconnect events |
+| `storage.js`            | Account-separated IndexedDB transactions and local version handling                        |
+| `customer-codes.js`     | Code picker/catalogue, activation/removal, and cached customer labels                      |
+| `connection-status.js`  | Connection, session, and pending-work messages                                             |
+| `app-shell.js`          | Version display, navigation, service-worker setup, and update notices                      |
+| `invoicing-settings.js` | Company details, customers, code assignments, and invoice numbering                        |
+| `invoice-draft.js`      | Draft editing, PDF preview, and issuing an invoice                                         |
+| `invoice-delivery.js`   | Invoice history, delivery, and payment/sent status                                         |
+
+Synchronization owns its timers and transfer state; callbacks notify the UI rather
+than reaching into form controls. Controllers read current form/catalogue state
+through getters instead of retaining stale snapshots. Add new modules to `SHELL`
+in `sw.js` so they remain available after an offline reload.
 
 ### Web tests
 

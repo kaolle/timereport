@@ -486,17 +486,17 @@ test('company details saved while a preview is loading invalidate its result', a
     await expect(page.locator('#invoice-pdf-preview')).toBeHidden();
 });
 
-test('online reload replaces an outdated invoicing module in the service worker cache', async ({page, context}) => {
+test('online reload replaces an outdated invoice draft module in the service worker cache', async ({page, context}) => {
     const state = await setup(page, context);
     await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
     // Reproduce the actual stale version: HTML is current, but the cached module
     // still creates the invoice editor without the ID needed by the preview.
-    const outdatedModule = readFileSync('src/main/resources/META-INF/resources/js/invoicing-settings.js', 'utf8')
-        .replace("    editorList.id = 'invoice-adjustment-list';\n", '');
+    const outdatedModule = readFileSync('src/main/resources/META-INF/resources/js/invoice-draft.js', 'utf8')
+        .replace("        editorList.id = 'invoice-adjustment-list';\n", '');
     await page.evaluate(async source => {
         const version = new URL(navigator.serviceWorker.controller.scriptURL).searchParams.get('v');
         const cache = await caches.open(`timereport-shell-v${version}`);
-        await cache.put('/js/invoicing-settings.js', new Response(source, {
+        await cache.put('/js/invoice-draft.js', new Response(source, {
             headers: {'Content-Type': 'application/javascript'}
         }));
     }, outdatedModule);

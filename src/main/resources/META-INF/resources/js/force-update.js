@@ -1,3 +1,7 @@
+import {APP_VERSION} from './version.js';
+
+document.querySelector('meta[name="application-version"]').content = APP_VERSION;
+
 document.getElementById('update').addEventListener('click', async event => {
     const button = event.currentTarget;
     const status = document.getElementById('status');

@@ -173,9 +173,10 @@ export function configureSynchronization({
         try {
             await syncPending();
             const {start, end} = weekBounds(date);
-            const [codes, entries, vacations] = await Promise.allSettled([fetchCodes(), fetchRange(start, end), fetchVacationDays(start, end)]);
+            const entryStart = shiftDate(start, -5);
+            const [codes, entries, vacations] = await Promise.allSettled([fetchCodes(), fetchRange(entryStart, end), fetchVacationDays(start, end)]);
             if (codes.status === 'fulfilled') await cacheCodes(codes.value);
-            if (entries.status === 'fulfilled') await cacheRange(start, end, entries.value);
+            if (entries.status === 'fulfilled') await cacheRange(entryStart, end, entries.value);
             if (vacations.status === 'fulfilled') await cacheVacationRange(start, end, vacations.value);
             await onLocalChange();
             onRefreshed(![codes, entries, vacations].some(result => result.status === 'rejected'));

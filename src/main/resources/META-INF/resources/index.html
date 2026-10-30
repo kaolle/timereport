@@ -115,7 +115,7 @@
                             <button id="save-new-code" class="secondary-button" type="button" hidden>Spara kundkod
                             </button>
                             <p id="code-help" class="field-help"></p></div>
-                        <div class="field"><label for="comment">Vad arbetade du med? <span>valfritt</span></label><textarea id="comment" name="comment" rows="3" placeholder="Till exempel utveckling, kundmöte eller planering"></textarea></div>
+                        <div class="field"><label for="comment">Vad arbetade du med? <span>valfritt</span></label><textarea id="comment" name="comment" rows="3" placeholder="Till exempel utveckling, kundmöte eller planering" aria-controls="comment-suggestions" aria-expanded="false" aria-autocomplete="list"></textarea><ul id="comment-suggestions" class="comment-suggestions" aria-label="Tidigare arbetsbeskrivningar" hidden></ul></div>
                         <div class="calculation" aria-live="polite"><span>Arbetad tid</span><output id="preview">8 h 30 min</output></div>
                         <p id="form-error" class="error-box" role="alert" hidden></p>
                         <p id="autosave-status" class="autosave-status" role="status"></p>

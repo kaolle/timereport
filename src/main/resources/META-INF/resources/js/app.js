@@ -5,6 +5,7 @@ import {configureMonthlyReport} from './report.js';
 import {configureAppShell, configureNavigation, prepareOffline} from './app-shell.js';
 import {configureInvoicingSettings} from './invoicing-settings.js';
 import {configureAccountTools, logout, requireAccount} from './auth.js';
+import {configureCommentSuggestions} from './comment-suggestions.js';
 import {formatMinutes, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
 import {
     deleteEntry,
@@ -41,6 +42,11 @@ let deleting = null;
 let formDirty = false;
 let ready = false;
 let busy = false;
+const commentSuggestions = configureCommentSuggestions({
+    getEntries: () => data.entries,
+    getDate: () => selectedDate,
+    getCustomerCode: () => $('customer-code').value.trim()
+});
 const changes = 'BroadcastChannel' in window ? new BroadcastChannel(`timereport-changes-${currentAccount.accountId}`) : null;
 
 const monthlyReport = configureMonthlyReport({onCache: reloadLocal});
@@ -328,6 +334,7 @@ async function resolveConflict(action) {
 
 async function reloadLocal() {
     data = await snapshot();
+    commentSuggestions.render();
     monthlyReport.render(data);
     renderEntries();
     renderCodes();
@@ -371,6 +378,7 @@ function preview() {
 
 function resetForm() {
     clearTimeout(autosaveTimer);
+    commentSuggestions.close();
     editing = null;
     $('entry-form').reset();
     $('save-new-code').hidden = true;
@@ -405,6 +413,7 @@ async function editEntry(entry) {
     $('comment').value = entry.comment;
     renderCodes();
     $('customer-code').value = entry.customerCode ?? '';
+    commentSuggestions.close();
     $('save-new-code').hidden = true;
     $('form-title').textContent = 'Ändra arbetstid';
     $('new-entry').hidden = false;

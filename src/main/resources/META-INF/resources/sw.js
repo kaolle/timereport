@@ -1,6 +1,6 @@
 const VERSION = new URL(self.location.href).searchParams.get('v') || '1';
 const CACHE = `timereport-shell-v${VERSION}`;
-const SHELL = ['/', '/index.html', '/styles.css', '/js/version.js', '/js/synchronization.js', '/js/app-shell.js', '/js/connection-status.js', '/js/customer-codes.js', '/js/invoice-draft.js', '/js/app.js', '/js/domain.js', '/js/storage.js', '/js/api.js', '/js/auth.js', '/js/monthly-report.js', '/js/report.js', '/js/invoicing-settings.js',
+const SHELL = ['/', '/index.html', '/styles.css', '/js/version.js', '/js/synchronization.js', '/js/app-shell.js', '/js/connection-status.js', '/js/customer-codes.js', '/js/comment-suggestions.js', '/js/invoice-draft.js', '/js/app.js', '/js/domain.js', '/js/storage.js', '/js/api.js', '/js/auth.js', '/js/monthly-report.js', '/js/report.js', '/js/invoicing-settings.js',
     '/js/invoice-delivery.js', '/manifest.json', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', event => {

@@ -57,9 +57,14 @@ test('shows recent comments across a week boundary, filters by customer and text
     await expect(page.locator('#comment')).toHaveValue('Kodgranskning');
     expect(await page.locator('#comment').evaluate(field => [field.selectionStart, field.selectionEnd]))
         .toEqual([13, 13]);
-    await page.locator('#comment').pressSequentially(' klar');
+    await expect(page.locator('#comment-suggestions')).toBeHidden();
     await page.locator('#start').fill('09:00');
     await page.locator('#end').fill('10:00');
+    await page.locator('#comment').focus();
+    await expect.poll(async () => (await page.evaluate(async () => (await import('/js/storage.js')).snapshot()))
+        .entries.some(entry => entry.date === dates.monday && entry.comment === 'Kodgranskning')).toBe(true);
+    await expect(page.locator('#comment-suggestions')).toBeHidden();
+    await page.locator('#comment').pressSequentially(' klar');
     await expect.poll(async () => (await page.evaluate(async () => (await import('/js/storage.js')).snapshot()))
         .entries.some(entry => entry.date === dates.monday && entry.comment === 'Kodgranskning klar')).toBe(true);
     await page.locator('#comment').focus();

@@ -23,6 +23,11 @@ export function configureCommentSuggestions({getEntries, getDate, getCustomerCod
     const textarea = document.getElementById('comment');
     const list = document.getElementById('comment-suggestions');
     const field = list.parentElement;
+    let selectedContext = null;
+
+    function context() {
+        return JSON.stringify([getDate(), getCustomerCode(), textarea.value]);
+    }
 
     function close() {
         list.hidden = true;
@@ -30,6 +35,8 @@ export function configureCommentSuggestions({getEntries, getDate, getCustomerCod
     }
 
     function render() {
+        if (selectedContext === context()) return close();
+        selectedContext = null;
         if (!field.contains(document.activeElement)) return close();
         const comments = recentComments(getEntries(), getDate(), getCustomerCode(), textarea.value);
         list.replaceChildren();
@@ -38,9 +45,13 @@ export function configureCommentSuggestions({getEntries, getDate, getCustomerCod
             const button = document.createElement('button');
             button.type = 'button';
             button.textContent = comment;
+            // Keep focus in the textarea until click fires. On touch devices the
+            // focusout handler can otherwise hide and remove this button first.
+            button.addEventListener('pointerdown', event => event.preventDefault());
             button.addEventListener('click', () => {
                 textarea.value = comment;
                 textarea.dispatchEvent(new Event('input', {bubbles: true}));
+                selectedContext = context();
                 textarea.focus({preventScroll: true});
                 textarea.setSelectionRange(comment.length, comment.length);
                 close();
@@ -53,7 +64,10 @@ export function configureCommentSuggestions({getEntries, getDate, getCustomerCod
     }
 
     textarea.addEventListener('focus', render);
-    textarea.addEventListener('input', render);
+    textarea.addEventListener('input', () => {
+        selectedContext = null;
+        render();
+    });
     textarea.addEventListener('keydown', event => {
         if (event.key === 'Escape') close();
         if (event.key === 'ArrowDown' && !list.hidden) {

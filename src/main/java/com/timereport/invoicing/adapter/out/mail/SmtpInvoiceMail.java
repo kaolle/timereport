@@ -21,12 +21,13 @@ public class SmtpInvoiceMail implements InvoiceMail {
     }
 
     @Override
-    public void send(IssuedInvoiceDocument document, String recipient, String replyTo, List<String> cc, List<String> bcc) {
+    public void send(IssuedInvoiceDocument document, String recipient, String replyTo, List<String> cc, List<String> bcc, String message) {
         var invoice = document.invoice();
         var seller = invoice.seller();
         String name = seller.sellerName().replaceAll("[\\p{Cntrl}]", " ");
         String text = "Hej!\n\nBifogat finns faktura " + invoice.invoiceNumber() + " från " + name
-                + " för " + invoice.periodMonth() + ".\n\nVid frågor kan du skicka mejl till " + replyTo + ".\n\nMed vänlig hälsning\n"
+                + " för " + invoice.periodMonth() + ".\n\n"
+                + (message.isBlank() ? "" : message + "\n\n") + "Vid frågor kan du skicka mejl till " + replyTo + ".\n\nMed vänlig hälsning\n"
                 + name + "\nSkickat via Tidrapporten";
         mailer.send(Mail.withText(recipient, "Faktura " + invoice.invoiceNumber() + " från " + name, text)
                 .setFrom(SmtpAddress.named(name + " via Tidrapporten", from))

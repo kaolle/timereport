@@ -68,6 +68,28 @@ async function remove(page) {
     await expect(page.locator('#delete-dialog')).toBeHidden();
 }
 
+test('vacation days keep the time form closed until the vacation mark is removed', async ({page, context}) => {
+    await mockApi(context);
+    await open(page);
+    await context.setOffline(true);
+    const day = page.locator('.week-day.today');
+    const vacation = page.locator('.week-day-slot').filter({has: day}).locator('input[type="checkbox"]');
+    await vacation.check();
+    await expect(page.locator('#entry-panel')).toBeHidden();
+    await day.click();
+    await expect(page.locator('#entry-panel')).toBeHidden();
+    await expect(day).toHaveAttribute('aria-expanded', 'false');
+    await page.reload();
+    await expect(vacation).toBeChecked();
+    await day.click();
+    await expect(page.locator('#entry-panel')).toBeHidden();
+    await vacation.uncheck();
+    await expect.poll(async () => (await snapshot(page)).vacationDays.length).toBe(0);
+    await day.click();
+    await expect(page.locator('#entry-panel')).toBeVisible();
+    await expect(page.locator('#start')).toBeFocused();
+});
+
 test('mobile flow saves offline, survives reload and reopening, edits and deletes locally', async ({ page, context }) => {
     const state = await mockApi(context);
     await open(page);

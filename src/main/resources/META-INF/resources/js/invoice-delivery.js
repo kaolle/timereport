@@ -21,7 +21,7 @@ export function configureInvoiceDelivery({request}) {
     let revision = 0;
 
     function open({number, recipient = '', pdf = null, lastDelivery = null}) {
-        active = {number, pdf, requestId: crypto.randomUUID(), lastState: lastDelivery?.state, attemptRecipients: null};
+        active = {number, pdf, requestId: crypto.randomUUID(), lastState: lastDelivery?.state, attemptContent: null};
         const opened = active;
         $('invoice-delivery-title').textContent = `Faktura ${number} är utfärdad`;
         $('invoice-delivery-download').checked = true;
@@ -30,7 +30,7 @@ export function configureInvoiceDelivery({request}) {
         $('invoice-delivery-recipient').value = recipient;
         $('invoice-delivery-recipient').disabled = true;
         $('invoice-delivery-recipient').required = false;
-        for (const id of ['invoice-delivery-cc', 'invoice-delivery-bcc']) {
+        for (const id of ['invoice-delivery-cc', 'invoice-delivery-bcc', 'invoice-delivery-message']) {
             $(id).value = '';
             $(id).disabled = true;
         }
@@ -78,7 +78,7 @@ export function configureInvoiceDelivery({request}) {
     $('invoice-delivery-email').addEventListener('change', event => {
         $('invoice-delivery-recipient').disabled = !event.target.checked;
         $('invoice-delivery-recipient').required = event.target.checked;
-        for (const id of ['invoice-delivery-cc', 'invoice-delivery-bcc']) $(id).disabled = !event.target.checked;
+        for (const id of ['invoice-delivery-cc', 'invoice-delivery-bcc', 'invoice-delivery-message']) $(id).disabled = !event.target.checked;
         if (event.target.checked) $('invoice-delivery-recipient').focus();
     });
     $('invoice-delivery-close').addEventListener('click', () => dialog.close());
@@ -118,24 +118,26 @@ export function configureInvoiceDelivery({request}) {
                 const addresses = id => $(id).value.split(',').map(value => value.trim()).filter(Boolean);
                 const cc = addresses('invoice-delivery-cc');
                 const bcc = addresses('invoice-delivery-bcc');
-                const recipients = JSON.stringify({recipient, cc, bcc});
+                const message = $('invoice-delivery-message').value.trim();
+                const content = JSON.stringify({recipient, cc, bcc, message});
                 if (active.lastState) {
                     const message = active.lastState === 'SENT' ? 'Fakturan har redan lämnats till e-postservern. Vill du skicka ett nytt mejl?'
                         : 'Ett tidigare utskick saknar bekräftelse och kan ha kommit fram. Vill du göra ett nytt utskicksförsök?';
                     if (!window.confirm(message)) return;
                     active.requestId = crypto.randomUUID();
                     active.lastState = null;
-                } else if (active.attemptRecipients && active.attemptRecipients !== recipients) {
-                    if (!window.confirm('Mottagarna har ändrats och ett tidigare utskick kan ha kommit fram. Vill du göra ett nytt utskick?')) return;
+                } else if (active.attemptContent && active.attemptContent !== content) {
+                    if (!window.confirm('Mottagarna eller meddelandet har ändrats och ett tidigare utskick kan ha kommit fram. Vill du göra ett nytt utskick?')) return;
                     active.requestId = crypto.randomUUID();
                 }
-                active.attemptRecipients = recipients;
+                active.attemptContent = content;
                 $('invoice-email-status').textContent = 'Skickar fakturan …';
                 try {
                     const result = await request(`/api/invoicing/invoices/${active.number}/email`, 'POST', {
                         recipient,
                         cc,
                         bcc,
+                        message,
                         requestId: active.requestId
                     }, 60000);
                     active.lastState = result.state;
@@ -146,6 +148,7 @@ export function configureInvoiceDelivery({request}) {
                         $('invoice-delivery-recipient').required = false;
                         $('invoice-delivery-cc').disabled = true;
                         $('invoice-delivery-bcc').disabled = true;
+                        $('invoice-delivery-message').disabled = true;
                     }
                     await refresh();
                 } catch (error) {

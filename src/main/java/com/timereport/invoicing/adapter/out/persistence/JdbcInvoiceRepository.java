@@ -157,7 +157,7 @@ public class JdbcInvoiceRepository implements InvoiceRepository {
                 + "i.snapshot->'customer'->>'name' AS customer_name,i.snapshot->'customer'->>'invoiceEmail' AS invoice_email,"
                 + "(i.snapshot->>'totalAmount')::numeric AS total_amount,(i.snapshot->>'vatAmount')::numeric AS vat_amount,"
                 + "i.snapshot->'seller'->>'currencyCode' AS currency_code,s.sent_at,s.paid_at,COALESCE(s.version,0) AS status_version,"
-                + "d.id,d.recipient,d.cc,d.bcc,d.state,d.requested_at,d.completed_at "
+                + "d.id,d.recipient,d.cc,d.bcc,d.message,d.state,d.requested_at,d.completed_at "
                 + "FROM issued_invoices i LEFT JOIN invoice_status s ON s.account_id=i.account_id AND s.invoice_number=i.invoice_number "
                 + "LEFT JOIN LATERAL (SELECT * FROM invoice_deliveries d WHERE d.account_id=i.account_id AND d.invoice_number=i.invoice_number ORDER BY requested_at DESC,id DESC LIMIT 1) d ON true "
                 + "WHERE i.account_id=? ORDER BY i.invoice_number DESC";

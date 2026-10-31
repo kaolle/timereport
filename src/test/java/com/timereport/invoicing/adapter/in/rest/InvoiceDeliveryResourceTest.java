@@ -83,17 +83,25 @@ class InvoiceDeliveryResourceTest {
         given().auth().oauth2(other.accessToken()).get("/api/invoicing/invoices").then().statusCode(200).body("size()", equalTo(0));
         given().auth().oauth2(other.accessToken()).get(path + "/pdf").then().statusCode(404);
         UUID requestId = UUID.randomUUID();
-        var send = Map.of("recipient", recipient, "requestId", requestId);
+        String greeting = "Från och med oktober fakturerar jag via Tidrapporten.\nMvh Stefan <3";
+        var send = Map.of("recipient", recipient, "requestId", requestId, "message", greeting);
         given().auth().oauth2(other.accessToken()).contentType("application/json").body(send).post(path + "/email").then().statusCode(404);
         given().auth().oauth2(token).contentType("application/json").body(send).post(path + "/email")
                 .then().statusCode(200).body("state", equalTo("SENT"));
         given().auth().oauth2(token).contentType("application/json").body(send).post(path + "/email")
                 .then().statusCode(200).body("state", equalTo("SENT"));
+        given().auth().oauth2(token).contentType("application/json").body(Map.of("recipient", recipient,
+                        "requestId", requestId, "message", "Ändrad hälsning"))
+                .post(path + "/email").then().statusCode(409);
+        given().auth().oauth2(token).contentType("application/json").body(Map.of("recipient", recipient,
+                        "requestId", UUID.randomUUID(), "message", "x".repeat(2001)))
+                .post(path + "/email").then().statusCode(400);
         var messages = mailbox.getMailMessagesSentTo(recipient);
         assertEquals(1, messages.size());
         var message = mailbox.getMailsSentTo(recipient).getFirst();
         assertTrue(message.getFrom().contains("Example AB via Tidrapporten"));
         assertEquals("company@example.test", message.getReplyTo());
+        assertTrue(message.getText().contains("\n\n" + greeting + "\n\n"));
         assertEquals(List.of(contact), message.getCc());
         assertEquals(List.of("company@example.test"), message.getBcc());
         assertTrue(message.getText().contains("Vid frågor kan du skicka mejl till company@example.test."));

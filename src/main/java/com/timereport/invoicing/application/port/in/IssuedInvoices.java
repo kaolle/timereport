@@ -12,7 +12,11 @@ public interface IssuedInvoices {
 
     InvoiceDeliveryDefaults deliveryDefaults(int invoiceNumber);
 
-    InvoiceDelivery send(int invoiceNumber, String recipient, List<String> cc, List<String> bcc, UUID requestId);
+    InvoiceDelivery send(int invoiceNumber, String recipient, List<String> cc, List<String> bcc, String message, UUID requestId);
+
+    default InvoiceDelivery send(int invoiceNumber, String recipient, List<String> cc, List<String> bcc, UUID requestId) {
+        return send(invoiceNumber, recipient, cc, bcc, null, requestId);
+    }
 
     default InvoiceDelivery send(int invoiceNumber, String recipient, UUID requestId) {
         return send(invoiceNumber, recipient, null, null, requestId);

@@ -312,6 +312,11 @@ addresses or clear a field to omit those copies. Each list allows up to ten
 addresses. Duplicates across To, CC and BCC are removed. If defaults cannot be
 loaded, reopen the dialog before sending; PDF download remains available.
 
+The optional **Meddelande** field adds up to 2000 characters of plain text to the
+invoice email, preserving line breaks. It applies only to that submission and does
+not change the PDF. The text is stored with the delivery attempt (migration V10).
+The email API accepts an optional `message`; omission or blank text sends the standard email.
+
 The invoice list groups all account invoices into **Förfallna**, **Obetalda**, and
 **Betalda**, showing gross and VAT totals separately per currency. Unpaid invoices
 become overdue the day after their due date. **Betald** is a manual payment marker;
@@ -328,7 +333,7 @@ address: **Vid frågor kan du skicka mejl till …**. Set it under
 verification/reset messages use the display name **Tidrapporten**.
 
 Each email request has a UUID `requestId`. Repeating it returns the recorded state
-without resending; reusing it for another recipient, copy list or invoice returns `409`. A lost
+without resending; reusing it for another recipient, copy list, message or invoice returns `409`. A lost
 HTTP response retains the ID in the dialog. Explicit resends use a new ID and ask
 for confirmation. Attempts are stored before SMTP, with `SENDING`, `SENT`, or
 `FAILED` results. There is no automatic SMTP retry: a timeout or crash can leave an

@@ -12,7 +12,8 @@ import java.util.UUID;
 @Builder
 public record SendInvoiceRequest(@NotBlank @Email @Size(max = 254) String recipient, @NotNull UUID requestId,
                                  @Size(max = 10) List<@NotBlank @Email @Size(max = 254) String> cc,
-                                 @Size(max = 10) List<@NotBlank @Email @Size(max = 254) String> bcc) {
+                                 @Size(max = 10) List<@NotBlank @Email @Size(max = 254) String> bcc,
+                                 @Size(max = 2000) String message) {
     public SendInvoiceRequest {
         cc = cc == null ? null : List.copyOf(cc);
         bcc = bcc == null ? null : List.copyOf(bcc);

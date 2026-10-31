@@ -1,5 +1,17 @@
 # Framtida infrastrukturförändringar
 
+## Betalning för faktura
+
+- [ ] Utred betalning för Tidrapportens SaaS-abonnemang: gratis tidrapportering och en betald faktureringsmodul. Stripe
+  är preliminär betaltjänst för abonnemang till tjänsteägarens företag och kan skicka PDF-faktura i SEK. Verifiera stöd
+  för svenskt bankgiro och OCR samt e-faktura till svenska företags ekonomisystem, inklusive om ytterligare integration
+  eller leverantör krävs, innan fakturabetalning erbjuds.
+
+**Designskiss för ägaråtkomst:** Faktureringsåtkomst ska gälla företagskontot och dess användare. Tjänsteägarens
+befintliga företagskonto ska få ett särskilt ägarundantag utan Stripe-betalning; andra företagskonton ska få samma
+åtkomst genom betalt abonnemang. Ägarundantaget ska vara skilt från administratörsrollen inom ett kundföretag. Modellen
+är ännu inte implementerad.
+
 ## Begränsa Brevo SMTP till godkända IP-adresser
 
 - [ ] Utvärdera fast utgående IP för Cloud Run och IP-begränsning för Brevos SMTP-nycklar.

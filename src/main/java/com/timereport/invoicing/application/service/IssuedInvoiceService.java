@@ -61,7 +61,7 @@ public class IssuedInvoiceService implements IssuedInvoices {
     }
 
     @Override
-    public InvoiceDelivery send(int invoiceNumber, String recipient, List<String> cc, List<String> bcc, UUID requestId) {
+    public InvoiceDelivery send(int invoiceNumber, String recipient, List<String> cc, List<String> bcc, String message, UUID requestId) {
         var document = get(invoiceNumber);
         String address = InvoiceDelivery.email(recipient);
         String replyTo = companyEmail(document);
@@ -71,11 +71,11 @@ public class IssuedInvoiceService implements IssuedInvoices {
         var defaults = cc == null || bcc == null ? defaults(document) : null;
         var attempt = InvoiceDelivery.builder().id(requestId).invoiceNumber(invoiceNumber).recipient(address)
                 .cc(cc == null ? defaults.cc() : cc).bcc(bcc == null ? defaults.bcc() : bcc)
-                .state(InvoiceDelivery.State.SENDING).requestedAt(clock.instant()).build();
+                .message(message).state(InvoiceDelivery.State.SENDING).requestedAt(clock.instant()).build();
         if (!deliveries.start(attempt)) return deliveries.find(requestId).orElseThrow();
         InvoiceDelivery completed;
         try {
-            mail.send(document, address, replyTo, attempt.cc(), attempt.bcc());
+            mail.send(document, address, replyTo, attempt.cc(), attempt.bcc(), attempt.message());
             completed = attempt.complete(InvoiceDelivery.State.SENT, clock.instant());
         } catch (RuntimeException failure) {
             // SMTP errors can be ambiguous: only an explicit user action may retry.

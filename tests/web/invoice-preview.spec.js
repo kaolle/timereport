@@ -272,6 +272,7 @@ test('issuing opens optional delivery and supports email and download together w
     await expect(page.getByLabel('BCC – dold kopia', {exact: true})).toHaveValue('company@example.test');
     await page.getByLabel('CC – kopia', {exact: true}).fill('contact@example.test, colleague@example.test');
     await page.getByLabel('Till e-postadress', {exact: true}).fill('edited@example.test');
+    await page.locator('#invoice-delivery-message').fill('Nu fakturerar jag via Tidrapporten.\nMvh Stefan');
     await page.screenshot({path: testInfo.outputPath('invoice-delivery.png')});
     const downloaded = page.waitForEvent('download');
     await page.getByRole('button', {name: 'Genomför valen', exact: true}).click();
@@ -280,6 +281,7 @@ test('issuing opens optional delivery and supports email and download together w
     expect(state.mailSends).toBe(1);
     expect(state.deliveryRequests[0].cc).toEqual(['contact@example.test', 'colleague@example.test']);
     expect(state.deliveryRequests[0].bcc).toEqual(['company@example.test']);
+    expect(state.deliveryRequests[0].message).toBe('Nu fakturerar jag via Tidrapporten.\nMvh Stefan');
     expect(state.issued).toBe(1);
     await page.getByRole('button', {name: 'Stäng', exact: true}).click();
     await page.getByRole('button', {name: 'Visa tidsunderlag', exact: true}).click();

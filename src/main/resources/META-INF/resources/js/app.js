@@ -138,6 +138,10 @@ function renderSyncSummary() {
 }
 
 function renderWeek() {
+    if (data.vacationDays.some(day => day.date === selectedDate)) {
+        formOpen = false;
+        autoSelectEnabled = false;
+    }
     const { start, end } = weekBounds();
     $('week-label').textContent = `${dateLabel(start, { day: 'numeric', month: 'short' })} – ${dateLabel(end, { day: 'numeric', month: 'short', year: 'numeric' })}`;
     $('next-week').disabled = weekBounds(shiftDate(viewedDate, 7)).start > weekBounds(today()).start;
@@ -443,7 +447,7 @@ async function chooseDate(date) {
     await reloadLocal();
     resetForm();
     selectDefaultEntry();
-    $('start').focus();
+    if (formOpen) $('start').focus();
     void refresh();
 }
 

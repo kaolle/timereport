@@ -10,7 +10,7 @@ import java.util.UUID;
 
 @Builder
 public record InvoiceDelivery(UUID id, int invoiceNumber, String recipient, List<String> cc, List<String> bcc,
-                              State state,
+                              String message, State state,
                               Instant requestedAt, Instant completedAt) {
     public enum State {SENDING, SENT, FAILED}
 
@@ -18,6 +18,9 @@ public record InvoiceDelivery(UUID id, int invoiceNumber, String recipient, List
         Objects.requireNonNull(id);
         Objects.requireNonNull(state);
         Objects.requireNonNull(requestedAt);
+        message = message == null ? "" : message.replace("\r\n", "\n").replace('\r', '\n').strip();
+        if (message.length() > 2000)
+            throw new IllegalArgumentException("Meddelandet får innehålla högst 2000 tecken.");
         recipient = email(recipient);
         String primary = recipient;
         cc = addresses(cc).stream().filter(address -> !address.equalsIgnoreCase(primary)).toList();
@@ -38,7 +41,7 @@ public record InvoiceDelivery(UUID id, int invoiceNumber, String recipient, List
 
     public InvoiceDelivery complete(State result, Instant now) {
         if (result == State.SENDING) throw new IllegalArgumentException("Ogiltigt utskicksresultat.");
-        return new InvoiceDelivery(id, invoiceNumber, recipient, cc, bcc, result, requestedAt, now);
+        return new InvoiceDelivery(id, invoiceNumber, recipient, cc, bcc, message, result, requestedAt, now);
     }
 
     public static List<String> addresses(List<String> values) {

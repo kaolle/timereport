@@ -11,6 +11,11 @@ const entries = [row(1, '2026-10-01', 'FAIRA'), row(2, '2026-10-02', 'FAIRA', '0
     row(7, '2026-09-30', 'OUTSIDE'), row(8, '2026-11-01', 'NOVEMBER', '08:00', '10:00', 0)];
 const snapshot = page => page.evaluate(async () => (await import('/js/storage.js')).snapshot());
 
+// Keep the initial week outside the report fixtures and exercise a non-default month.
+test.beforeEach(async ({page}) => {
+    await page.clock.setFixedTime(new Date('2026-11-15T12:00:00Z'));
+});
+
 async function setup(page, context, source = entries) {
     const state = {calls: [], waitForOctober: null, vacations: []};
     await context.route('**/api/**', async route => {
@@ -51,11 +56,15 @@ async function setup(page, context, source = entries) {
     return state;
 }
 
-async function openReport(page, month = '2026-10') {
+async function selectReport(page, month = '2026-10') {
     await page.locator('#report-month').evaluate((input, month) => {
         input.value = month;
     }, month);
     await page.getByRole('button', {name: 'Månadsrapport', exact: true}).click();
+}
+
+async function openReport(page, month = '2026-10') {
+    await selectReport(page, month);
     await expect(page.locator('#report-status')).toContainText('Månadens tider har hämtats');
 }
 
@@ -100,7 +109,7 @@ test('report includes unsynced edits and deletions, survives offline reload and 
     await expect(page.locator('#report-status')).toContainText('Ej synkroniserade');
     await page.reload();
     await expect(page.locator('#entry-fields')).toBeEnabled();
-    await page.getByRole('button', {name: 'Månadsrapport', exact: true}).click();
+    await selectReport(page);
     await expect(page.locator('#report-total')).toHaveText('24 h 00 min');
     await expect(page.locator('#report-status')).toContainText('Offline');
     await expect(page.locator('#report-status')).not.toContainText('ofullständig');
@@ -116,10 +125,7 @@ test('switching month while loading ignores an older response', async ({page, co
     state.waitForOctober = new Promise(resolve => {
         release = resolve;
     });
-    await page.locator('#report-month').evaluate(input => {
-        input.value = '2026-10';
-    });
-    await page.getByRole('button', {name: 'Månadsrapport', exact: true}).click();
+    await selectReport(page);
     await expect.poll(() => state.calls.some(path => path.includes('from=2026-10-01'))).toBe(true);
     await page.locator('#report-month').fill('2026-11');
     await expect(page.locator('#report-total')).toHaveText('2 h 00 min');
@@ -160,7 +166,7 @@ test('refreshing a month leaves unchanged entry revisions valid for open edits',
 test('failed month fetch never marks a partial local report as complete', async ({page, context}) => {
     await setup(page, context);
     await context.route('**/api/time-entries?from=2026-10-01&to=2026-10-31', route => route.fulfill({status: 503}));
-    await page.getByRole('button', {name: 'Månadsrapport', exact: true}).click();
+    await selectReport(page);
     await expect(page.locator('#report-status')).toContainText('Månaden kunde inte hämtas');
     await expect(page.locator('#report-status')).toContainText('ofullständig');
     expect((await snapshot(page)).reportMonths).toHaveLength(0);
@@ -186,7 +192,7 @@ test('vacation days and full workweeks are fetched for the month and retained of
     await context.setOffline(true);
     await page.reload();
     await expect(page.locator('#entry-fields')).toBeEnabled();
-    await page.getByRole('button', {name: 'Månadsrapport', exact: true}).click();
+    await selectReport(page);
     await expect(page.locator('#report-vacation-total')).toHaveText('7 semesterdagar');
     await page.evaluate(async () => {
         const storage = await import('/js/storage.js');
@@ -201,7 +207,7 @@ test('vacation days and full workweeks are fetched for the month and retained of
 test('failed vacation fetch does not mark the month complete', async ({page, context}) => {
     await setup(page, context);
     await context.route('**/api/vacation-days?from=2026-10-01&to=2026-10-31', route => route.fulfill({status: 503}));
-    await page.getByRole('button', {name: 'Månadsrapport', exact: true}).click();
+    await selectReport(page);
     await expect(page.locator('#report-status')).toContainText('Månaden kunde inte hämtas');
     expect((await snapshot(page)).reportMonths).toHaveLength(0);
 });

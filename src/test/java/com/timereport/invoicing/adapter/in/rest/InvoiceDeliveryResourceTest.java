@@ -1,6 +1,7 @@
 package com.timereport.invoicing.adapter.in.rest;
 
 import com.timereport.authentication.AuthTestSupport;
+import com.timereport.mail.application.port.in.DispatchMail;
 import io.quarkus.mailer.MockMailbox;
 import io.quarkus.test.junit.QuarkusTest;
 import io.smallrye.mutiny.Multi;
@@ -25,6 +26,8 @@ class InvoiceDeliveryResourceTest {
     MockMailbox mailbox;
     @Inject
     DataSource dataSource;
+    @Inject
+    DispatchMail dispatchMail;
 
     @Test
     void archivedPdfDeliveryIsIdempotentAndAccountScopedAndKeepsPaymentStatusSeparate() throws Exception {
@@ -87,7 +90,8 @@ class InvoiceDeliveryResourceTest {
         var send = Map.of("recipient", recipient, "requestId", requestId, "message", greeting);
         given().auth().oauth2(other.accessToken()).contentType("application/json").body(send).post(path + "/email").then().statusCode(404);
         given().auth().oauth2(token).contentType("application/json").body(send).post(path + "/email")
-                .then().statusCode(200).body("state", equalTo("SENT"));
+                .then().statusCode(200).body("state", equalTo("SENDING"));
+        dispatchMail.dispatch();
         given().auth().oauth2(token).contentType("application/json").body(send).post(path + "/email")
                 .then().statusCode(200).body("state", equalTo("SENT"));
         given().auth().oauth2(token).contentType("application/json").body(Map.of("recipient", recipient,
@@ -128,14 +132,16 @@ class InvoiceDeliveryResourceTest {
         var results = java.util.stream.IntStream.range(0, 2).parallel().mapToObj(ignored ->
                 given().auth().oauth2(token).contentType("application/json").body(nextRequest).post(path + "/email")
                         .then().statusCode(200).extract().path("state")).toList();
-        assertTrue(results.stream().allMatch(state -> state.equals("SENDING") || state.equals("SENT")));
+        assertTrue(results.stream().allMatch(state -> state.equals("SENDING")));
+        dispatchMail.dispatch();
         assertEquals(2, mailbox.getMailMessagesSentTo(recipient).size());
         given().auth().oauth2(token).get("/api/invoicing/invoices").then().statusCode(200)
                 .body("[0].status.paid", equalTo(true), "[0].status.sent", equalTo(true), "[0].status.version", equalTo(3),
                         "[0].lastDelivery.cc", contains(contact), "[0].lastDelivery.bcc", contains("company@example.test"));
         given().auth().oauth2(token).contentType("application/json").body(Map.of("recipient", recipient, "requestId", UUID.randomUUID(),
                         "cc", List.of("override@example.test"), "bcc", List.of()))
-                .post(path + "/email").then().statusCode(200).body("cc", contains("override@example.test"), "bcc", empty());
+                .post(path + "/email").then().statusCode(200).body("state", equalTo("SENDING"), "cc", contains("override@example.test"), "bcc", empty());
+        dispatchMail.dispatch();
         var override = mailbox.getMailsSentTo(recipient).getLast();
         assertEquals(List.of("override@example.test"), override.getCc());
         assertTrue(override.getBcc().isEmpty());

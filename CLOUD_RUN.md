@@ -23,7 +23,7 @@ Skapa två tjänstekonton under **IAM & Admin → Service Accounts**:
 | Konto                | Behörigheter                                                                                                                                                    |
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `timereport-build`   | Artifact Registry Writer på repositoryt; Logs Writer i projektet; Cloud Run Developer på tjänsten när den skapats; Service Account User på `timereport-runtime` |
-| `timereport-runtime` | Secret Manager Secret Accessor på de fyra secrets nedan                                                                                                         |
+| `timereport-runtime` | Secret Manager Secret Accessor på runtime-secrets nedan                                                                                                         |
 
 Den användare som skapar/kör triggern behöver Cloud Build Editor och rätt att använda
 byggkontot (`iam.serviceAccounts.actAs`, ingår i Service Account User). Den som skapar
@@ -41,6 +41,8 @@ Skapa följande i **Secret Manager**. Värdena anges där, aldrig i Git eller by
 | `timereport-smtp-password` | Brevos SMTP-nyckel                            |
 | `timereport-jwt-private`   | Hela `private.pem`, inklusive BEGIN/END-rader |
 | `timereport-jwt-public`    | Hela `public.pem`, inklusive BEGIN/END-rader  |
+| `timereport-mail-outbox-key` | Base64-kodad 32-byte AES-nyckel från `openssl rand -base64 32` |
+| `timereport-mail-dispatch-token` | Slumpad token från `openssl rand -hex 32` |
 
 Välj explicita versionsnummer när secrets kopplas till tjänsten, exempelvis `1`.
 Det gör att en ny secret-version inte byter nycklar under en redan körande revision.
@@ -128,6 +130,8 @@ Under **Variables & Secrets → Reference a secret**, koppla följande
 | `SMTP_PASSWORD`   | `timereport-smtp-password` |
 | `JWT_PRIVATE_KEY` | `timereport-jwt-private`   |
 | `JWT_PUBLIC_KEY`  | `timereport-jwt-public`    |
+| `MAIL_OUTBOX_KEY` | `timereport-mail-outbox-key` |
+| `MAIL_DISPATCH_TOKEN` | `timereport-mail-dispatch-token` |
 
 Välj ett explicit versionsnummer för varje secret. JWT-värdena ska vara hela PEM-texter
 med BEGIN/END-rader och riktiga radbrytningar, utan extra citattecken eller bokstavliga `\n`.
@@ -153,6 +157,29 @@ När `AUTH_EMAIL_VERIFICATION_REQUIRED=false` skapas kontot som verifierat och a
 loggas in direkt. E-postadressen används fortfarande som inloggningsnamn. Eftersom ägandet
 av adressen då inte kontrolleras bör läget bara användas tillfälligt; återställ `true` efter
 att du har skapat kontot och deploya en ny revision.
+
+**Inför utrullningen av mejlkön:** lägg till de två nya secrets ovan på den befintliga
+Cloud Run-tjänsten innan nästa image deployas. Start av den nya versionen kräver båda
+värdena. Låt samma AES-nyckel ligga kvar i senare revisioner medan köade mejl finns.
+Skapa dessutom en **Cloud Scheduler**-job i samma projekt med HTTP-metoden `POST`,
+schemat `* * * * *` (varje minut) och målet
+`https://DIN-PUBLIC_URL/internal/mail/dispatch`. Sätt headern
+`X-Mail-Dispatch-Token` till exakt samma värde som `MAIL_DISPATCH_TOKEN` och begränsa
+åtkomsten till jobbets konfiguration. Välj en HTTP-timeout på minst 60 sekunder och
+testa jobbet manuellt. Tjänstens publika åtkomst behövs fortfarande för webbsidan;
+det interna anropet kontrollerar den separata tokenen. Cloud Run med begärandebaserad
+CPU och noll minimiinstanser behöver denna väckning för att kön ska tömmas pålitligt.
+Det lokala utvecklingsläget tömmer kön automatiskt var femte sekund.
+
+Skapa ett **separat Cloud Scheduler-jobb för rensning** med HTTP-metoden `POST`,
+schemat `0 3 * * *` och tidszonen `Etc/UTC`. Målet är
+`https://DIN-PUBLIC_URL/internal/mail/cleanup`. Sätt samma
+`X-Mail-Dispatch-Token`-header som på dispatch-jobbet. Rensningen tar bort endast
+`SENT`, `FAILED`, `EXPIRED` och `CANCELLED` 60 dagar efter `completed_at`; väntande
+eller pågående mejl påverkas inte. Svaret innehåller `deleted` och en INFO-loggrad
+visar antal borttagna även när det är noll. Testa jobbet manuellt efter deployment.
+Ett upprepat anrop är säkert: redan borttagna rader kan inte tas bort igen.
+Aktivera Cloud Scheduler API i projektet om den ännu inte är aktiverad.
 
 ## 5. Slå på automatisk deployment och verifiera
 
@@ -193,4 +220,6 @@ adressen ska tillhöra en autentiserad domän och godkännas av Brevo. Utan vari
 används `MAIL_FROM`. Fakturamejl visas som **Företagsnamn via Tidrapporten**, med
 företagets e-post under Ditt företag som Reply-To. Inga nya SMTP-nycklar krävs.
 Flyway V8 lägger till utskicks- och betalstatus utan att ändra utfärdade fakturor.
+Flyway V11 lagrar mejl i en krypterad kö. Nyckeln behövs även för kontoverifiering och
+återställning. Avslutade köposter behåller bara status; innehållet rensas.
 SENT i appen avser SMTP-acceptans; kontrollera leverans och studsar i Brevo.

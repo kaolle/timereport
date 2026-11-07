@@ -335,13 +335,18 @@ verification/reset messages use the display name **Tidrapporten**.
 Each email request has a UUID `requestId`. Repeating it returns the recorded state
 without resending; reusing it for another recipient, copy list, message or invoice returns `409`. A lost
 HTTP response retains the ID in the dialog. Explicit resends use a new ID and ask
-for confirmation. Attempts are stored before SMTP, with `SENDING`, `SENT`, or
-`FAILED` results. There is no automatic SMTP retry: a timeout or crash can leave an
-ambiguous result. Check Brevo before an explicit resend. A pending attempt blocks
-new sends for five minutes; each invoice permits five attempts per hour.
+for confirmation. The invoice request and its encrypted mail queue entry commit in
+one transaction. `SENDING` means queued or being retried, `SENT` means SMTP accepted
+the message, and `FAILED` means retries were exhausted or the message expired.
+The worker tries up to six times with increasing delays (one minute to two hours).
+A queued invoice blocks another send for that invoice; after a final failure the user
+can explicitly request a new send. Each invoice permits five requests per hour.
+An SMTP timeout can have an ambiguous outcome: automatic retry may occasionally
+deliver a duplicate. Check the provider before sending again after a final failure.
 `SENT` means SMTP acceptance, not delivery to the inbox. Bounce processing remains
 in [INFRA_TODO.md](INFRA_TODO.md). Development/test uses Quarkus's mock mailbox,
-so no real email is sent. V8 adds delivery attempts and mutable status metadata;
+so no real email is sent. V11 adds the encrypted outbox; completed messages have
+their encrypted body and PDF copy removed. V8 adds delivery attempts and mutable status metadata;
 earlier migration scripts are unchanged. V9 adds the customer's contact email and
 stores the exact CC/BCC lists on each delivery attempt. For API clients, omitted
 or null copy lists use the defaults; explicit empty lists suppress those copies.
@@ -361,7 +366,9 @@ Access tokens are RS256 JWTs valid for **5 minutes**, kept only in JavaScript me
 The opaque refresh token is stored in an **HttpOnly, SameSite=Strict** cookie scoped
 to `/api/auth`, with `Secure` enabled in production. Sessions last **30 days from
 login**, without extending that deadline on refresh. Each refresh rotates the token;
-reuse revokes the session. Only hashes of refresh and email tokens are persisted.
+reuse revokes the session. Refresh and email tokens are hashed in the authentication
+tables. A pending verification/reset mail temporarily contains the raw link inside
+the encrypted outbox payload; the payload is cleared after sending, expiry, or cancellation.
 Logout revokes that session; password changes and resets revoke all account sessions.
 Protected data requests also check session validity, so revocation takes effect
 without waiting for JWT expiry. Passwords use salted PBKDF2-HMAC-SHA256 (600,000 rounds).
@@ -446,12 +453,30 @@ this file is not loaded automatically and must never contain real credentials.
 | `SMTP_USERNAME`, `SMTP_PASSWORD`       | SMTP credentials                                                                        |
 | `MAIL_FROM`                            | Sender address accepted by your mail provider                                           |
 | `INVOICE_MAIL_FROM`                    | Optional invoice sender address on an authenticated domain; defaults to `MAIL_FROM`     |
+| `MAIL_OUTBOX_KEY`                      | Stable base64-encoded 32-byte AES key for encrypted queued mail (required in production) |
+| `MAIL_DISPATCH_TOKEN`                  | Random secret for the internal mail worker endpoint (required in production)          |
 
 Development/test keys are generated automatically when no keys are configured;
 production needs stable keys shared by all instances. Cloud Run should inject the
 complete PEM values as `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY`. Keep their BEGIN/END
 lines and actual line breaks; do not add quotes or replace line breaks with literal `\n`.
 Pin both secrets to explicit versions when deploying.
+
+Generate the separate outbox key with `openssl rand -base64 32` and a random dispatch
+token with `openssl rand -hex 32`. Store them in Secret Manager. Do not rotate the
+outbox key until every pending message has completed, or those messages cannot be
+decrypted. Prepare both secrets and the Cloud Scheduler job before deploying this
+version. Production does not run the local mail timer: Cloud Scheduler calls
+`POST /internal/mail/dispatch` every minute with the `X-Mail-Dispatch-Token` header.
+An invalid token is rejected. Each call processes at most 20 messages or 40 seconds;
+several instances may work concurrently without claiming the same queued row.
+Development runs the worker every five seconds; tests invoke it explicitly.
+The cleanup job deletes `SENT`, `FAILED`, `EXPIRED`, and `CANCELLED` outbox rows 60 days
+after `completed_at`; it never deletes `PENDING` or `SENDING` work. Each run logs its
+cutoff and deleted-row count, including zero. Development schedules cleanup daily at
+03:00. Production uses a separate daily Cloud Scheduler HTTP job calling
+`POST /internal/mail/cleanup` with the same `X-Mail-Dispatch-Token` header. The endpoint
+returns `{"deleted": n}` and is safe to retry. See `CLOUD_RUN.md` for the job setup.
 
 For local development with your own PEM files, use the alternative path variables:
 
@@ -545,7 +570,7 @@ All endpoints below require
 | `POST /api/invoicing/invoices`                             | Issue the reviewed month/customer invoice and return its PDF; accepts the same line adjustments as the preview |
 | `GET /api/invoicing/invoices/{number}/pdf`                 | Download the account's issued PDF again                                                                        |
 | `GET /api/invoicing/invoices`                              | List account invoices, due dates, gross/VAT amounts, status versions, and latest email attempt                 |
-| `POST /api/invoicing/invoices/{number}/email`              | Send the archived PDF; body: `recipient`, UUID `requestId`, optional `cc`/`bcc` arrays                         |
+| `POST /api/invoicing/invoices/{number}/email`              | Queue the archived PDF; body: `recipient`, UUID `requestId`, optional `cc`/`bcc` arrays; returns `SENDING`       |
 | `GET /api/invoicing/invoices/{number}/delivery-defaults`   | Read default CC and BCC lists for the account's issued invoice                                                 |
 | `PUT /api/invoicing/invoices/{number}/status`              | Set manual `sent`/`paid` booleans with `expectedVersion`; returns updated status                               |
 | `PUT /api/customer-codes/{code}`                           | Create, activate, or deactivate a customer code                                                                |
@@ -617,7 +642,7 @@ new codes by sending them in the PUT body.
 ## Architecture
 
 Business capabilities live under `com.timereport.timeentry`,
-`com.timereport.authentication`, and `com.timereport.invoicing`, each following
+`com.timereport.authentication`, `com.timereport.invoicing`, and `com.timereport.mail`, each following
 ports and adapters:
 
 - `domain`: immutable models and business rules, without framework dependencies.

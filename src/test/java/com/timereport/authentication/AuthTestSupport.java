@@ -1,6 +1,7 @@
 package com.timereport.authentication;
 
 import io.quarkus.mailer.MockMailbox;
+import com.timereport.mail.application.port.in.DispatchMail;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -15,6 +16,8 @@ public class AuthTestSupport {
     public static final String PASSWORD = "a long test password 123!";
     @Inject
     MockMailbox mailbox;
+    @Inject
+    DispatchMail dispatchMail;
 
     public record Login(String email, String accessToken, String refreshToken, String accountId) {
     }
@@ -36,6 +39,7 @@ public class AuthTestSupport {
     }
 
     public String mailToken(String email, String purpose) {
+        dispatchMail.dispatch();
         var messages = mailbox.getMailMessagesSentTo(email);
         String text = messages.get(messages.size() - 1).getText();
         var matcher = Pattern.compile("#" + purpose + "=([A-Za-z0-9_-]+)").matcher(text);

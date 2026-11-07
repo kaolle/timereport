@@ -1,0 +1,80 @@
+@startuml
+title Tidrapporten - sekvens för mejlutskick
+autonumber
+
+actor "Användare" as User
+participant "Autentisering /\nFakturering" as Service
+participant "QueueMail" as Queue
+database "PostgreSQL" as DB
+participant "Cloud Scheduler" as Scheduler
+participant "Dispatch-endpoint" as API
+participant "MailDispatchService" as Dispatcher
+participant "MailCleanupService" as Cleaner
+participant "Brevo via MailTransport" as SMTP
+
+== Köa mejl ==
+User -> Service : Begär verifiering, återställning eller fakturamejl
+Service -> Queue : enqueue(mejl, giltighetstid)
+Queue -> DB : INSERT mail_outbox (PENDING, krypterat innehåll)
+DB --> Queue : OK
+Queue --> Service : OK
+note over Service, DB
+  Köposten och affärsåtgärden sparas
+  i samma databastransaktion.
+end note
+Service --> User : Åtgärden är registrerad
+
+== Skicka från kön ==
+Scheduler -> API : POST /internal/mail/dispatch\nX-Mail-Dispatch-Token
+API -> API : Jämför header med MAIL_DISPATCH_TOKEN
+API -> Dispatcher : dispatch()
+
+loop Högst 20 mejl eller 40 sekunder
+    Dispatcher -> DB : claim förfallen post (SKIP LOCKED)
+    DB --> Dispatcher : SENDING + lease + försökstal
+
+    alt Giltighetstiden har gått ut
+        Dispatcher -> DB : EXPIRED; rensa innehåll
+    else Mejlet är giltigt
+        Dispatcher -> SMTP : send(mejl)
+        alt SMTP accepterar
+            SMTP --> Dispatcher : OK
+            Dispatcher -> DB : SENT; rensa innehåll
+        else SMTP-fel och försök återstår
+            SMTP --> Dispatcher : Fel
+            Dispatcher -> DB : PENDING; schemalägg nytt försök
+        else SMTP-fel efter högst sex försök
+            SMTP --> Dispatcher : Fel
+            Dispatcher -> DB : FAILED; rensa innehåll
+        end
+    end
+
+    opt Slutlig status för fakturamejl
+        Dispatcher -> DB : Uppdatera fakturans leveransstatus
+    end
+end
+
+note over Dispatcher, DB
+  Köpostens slutstatus och fakturastatus
+  uppdateras i samma transaktion.
+end note
+Dispatcher --> API : Antal behandlade mejl
+API --> Scheduler : 200 OK
+
+== Daglig rensning ==
+Scheduler -> API : POST /internal/mail/cleanup\nX-Mail-Dispatch-Token
+API -> API : Jämför header med MAIL_DISPATCH_TOKEN
+API -> Cleaner : clean()
+Cleaner -> DB : DELETE slutstatus med completed_at <= nu - 60 dagar
+DB --> Cleaner : Antal borttagna
+Cleaner -> Cleaner : Logga antal och gränstidpunkt
+Cleaner --> API : deleted
+API --> Scheduler : 200 OK
+
+note over Dispatcher, SMTP
+  SENT betyder att SMTP-servern accepterat mejlet,
+  inte att det nått mottagarens inkorg.
+  En krasch efter SMTP-acceptans men före DB-commit
+  kan leda till ett nytt utskick.
+end note
+@enduml

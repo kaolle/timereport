@@ -23,9 +23,12 @@ class IssuedInvoiceServiceTest {
     private final InvoiceDeliveryRepository deliveries = mock(InvoiceDeliveryRepository.class);
     private final InvoiceStatusRepository statuses = mock(InvoiceStatusRepository.class);
     private final InvoiceMail mail = mock(InvoiceMail.class);
+    private final InvoiceTransaction transaction = new InvoiceTransaction() {
+        @Override public <T> T execute(java.util.function.Supplier<T> work) { return work.get(); }
+    };
     private final InvoicingSettingsRepository settings = mock(InvoicingSettingsRepository.class);
     private final Clock clock = Clock.fixed(Instant.parse("2026-10-25T10:00:00Z"), ZoneOffset.UTC);
-    private final IssuedInvoiceService service = new IssuedInvoiceService(invoices, deliveries, statuses, mail, settings, clock);
+    private final IssuedInvoiceService service = new IssuedInvoiceService(invoices, deliveries, statuses, mail, transaction, settings, clock);
 
     private IssuedInvoiceDocument document() {
         var seller = new SellerBillingProfile("Example AB", "Gatan 1", "12345", "Ort", "Sverige", "", "", "", "company@example.test", "SEK", 30, BigDecimal.valueOf(25), true);
@@ -37,34 +40,29 @@ class IssuedInvoiceServiceTest {
     }
 
     @Test
-    void smtpFailureIsRecordedAndRepeatingTheSameRequestNeverResends() {
+    void queuedMailIsIdempotentForTheSameRequest() {
         UUID id = UUID.randomUUID();
         var document = document();
         when(invoices.findDocument(1063)).thenReturn(Optional.of(document));
         when(deliveries.start(any())).thenReturn(true, false);
-        doThrow(new IllegalStateException("SMTP unavailable")).when(mail).send(any(), anyString(), anyString(), anyList(), anyList(), anyString());
         var result = service.send(1063, "customer@example.test", id);
-        assertEquals(InvoiceDelivery.State.FAILED, result.state());
+        assertEquals(InvoiceDelivery.State.SENDING, result.state());
         when(deliveries.find(id)).thenReturn(Optional.of(result));
         assertEquals(result, service.send(1063, "customer@example.test", id));
-        verify(mail, times(1)).send(document, "customer@example.test", "company@example.test", List.of("contact@example.test"), List.of("company@example.test"), "");
-        verify(deliveries).complete(result);
+        verify(mail, times(1)).enqueue(document, result, "company@example.test");
         verifyNoInteractions(statuses);
     }
 
     @Test
-    void lostCompletionLeavesPendingAttemptAndDoesNotResendOnRetry() {
+    void queueFailurePropagatesToRollBackTheInvoiceAttempt() {
         UUID id = UUID.randomUUID();
         when(invoices.findDocument(1063)).thenReturn(Optional.of(document()));
-        when(deliveries.start(any())).thenReturn(true, false);
-        doThrow(new IllegalStateException("database unavailable")).when(deliveries).complete(any());
+        when(deliveries.start(any())).thenReturn(true);
+        doThrow(new IllegalStateException("database unavailable")).when(mail).enqueue(any(), any(), anyString());
         assertThrows(IllegalStateException.class, () -> service.send(1063, "customer@example.test", id));
         var captor = ArgumentCaptor.forClass(InvoiceDelivery.class);
         verify(deliveries).start(captor.capture());
-        var pending = captor.getValue();
-        when(deliveries.find(id)).thenReturn(Optional.of(pending));
-        assertEquals(InvoiceDelivery.State.SENDING, service.send(1063, "customer@example.test", id).state());
-        verify(mail, times(1)).send(any(), anyString(), anyString(), anyList(), anyList(), anyString());
+        assertEquals(InvoiceDelivery.State.SENDING, captor.getValue().state());
     }
 
     @Test

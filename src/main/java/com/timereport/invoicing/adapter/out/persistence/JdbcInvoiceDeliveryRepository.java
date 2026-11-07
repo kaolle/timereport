@@ -32,7 +32,7 @@ public class JdbcInvoiceDeliveryRepository implements InvoiceDeliveryRepository,
     }
 
     @Override
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    @Transactional(Transactional.TxType.MANDATORY)
     public boolean start(InvoiceDelivery delivery) {
         try (var connection = dataSource.getConnection()) {
             lockInvoice(connection, delivery.invoiceNumber());
@@ -41,13 +41,13 @@ public class JdbcInvoiceDeliveryRepository implements InvoiceDeliveryRepository,
                 verifyRequest(existing.get(), delivery);
                 return false;
             }
-            try (var statement = connection.prepareStatement("SELECT count(*), count(*) FILTER (WHERE state='SENDING' AND requested_at > now()-interval '5 minutes') FROM invoice_deliveries WHERE account_id=? AND invoice_number=? AND requested_at > now()-interval '1 hour'")) {
+            try (var statement = connection.prepareStatement("SELECT count(*), count(*) FILTER (WHERE state='SENDING') FROM invoice_deliveries WHERE account_id=? AND invoice_number=? AND (state='SENDING' OR requested_at > now()-interval '1 hour')")) {
                 statement.setObject(1, identity.accountId());
                 statement.setInt(2, delivery.invoiceNumber());
                 try (var result = statement.executeQuery()) {
                     result.next();
                     if (result.getInt(2) > 0)
-                        throw new InvoicingConflict("Ett utskick pågår eller saknar bekräftelse. Vänta fem minuter innan du försöker skicka igen.");
+                        throw new InvoicingConflict("Fakturan har redan ett mejl i utkön. Vänta tills det är färdigt innan du skickar igen.");
                     if (result.getInt(1) >= 5)
                         throw new InvoicingConflict("För många utskicksförsök för fakturan. Försök igen om en timme.");
                 }
@@ -92,27 +92,36 @@ public class JdbcInvoiceDeliveryRepository implements InvoiceDeliveryRepository,
     }
 
     @Override
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
-    public void complete(InvoiceDelivery delivery) {
+    @Transactional(Transactional.TxType.MANDATORY)
+    public void completeFromMail(UUID accountId, UUID requestId, boolean accepted, Instant completedAt) {
         try (var connection = dataSource.getConnection()) {
-            lockInvoice(connection, delivery.invoiceNumber());
-            try (var statement = connection.prepareStatement("UPDATE invoice_deliveries SET state=?,completed_at=? WHERE account_id=? AND id=? AND state='SENDING'")) {
-                statement.setString(1, delivery.state().name());
-                statement.setTimestamp(2, Timestamp.from(delivery.completedAt()));
-                statement.setObject(3, identity.accountId());
-                statement.setObject(4, delivery.id());
-                if (statement.executeUpdate() != 1) throw new InvoicingConflict("Utskicket har redan avslutats.");
-            }
-            if (delivery.state() == InvoiceDelivery.State.SENT) {
-                try (var statement = connection.prepareStatement("INSERT INTO invoice_status(account_id,invoice_number,sent_at,version) VALUES(?,?,?,1) ON CONFLICT(account_id,invoice_number) DO UPDATE SET sent_at=EXCLUDED.sent_at,version=invoice_status.version+1")) {
-                    statement.setObject(1, identity.accountId());
-                    statement.setInt(2, delivery.invoiceNumber());
-                    statement.setTimestamp(3, Timestamp.from(delivery.completedAt()));
-                    statement.executeUpdate();
+            int invoiceNumber;
+            try (var select = connection.prepareStatement("SELECT invoice_number,state FROM invoice_deliveries WHERE account_id=? AND id=? FOR UPDATE")) {
+                select.setObject(1, accountId);
+                select.setObject(2, requestId);
+                try (var result = select.executeQuery()) {
+                    if (!result.next()) throw new IllegalStateException("Invoice mail delivery is missing");
+                    invoiceNumber = result.getInt("invoice_number");
+                    if (!"SENDING".equals(result.getString("state"))) return;
                 }
             }
-        } catch (SQLException error) {
-            throw databaseError(error);
+            try (var update = connection.prepareStatement("UPDATE invoice_deliveries SET state=?,completed_at=? WHERE account_id=? AND id=?")) {
+                update.setString(1, accepted ? "SENT" : "FAILED");
+                update.setTimestamp(2, Timestamp.from(completedAt));
+                update.setObject(3, accountId);
+                update.setObject(4, requestId);
+                update.executeUpdate();
+            }
+            if (accepted) {
+                try (var status = connection.prepareStatement("INSERT INTO invoice_status(account_id,invoice_number,sent_at,version) VALUES(?,?,?,1) ON CONFLICT(account_id,invoice_number) DO UPDATE SET sent_at=EXCLUDED.sent_at,version=invoice_status.version+1")) {
+                    status.setObject(1, accountId);
+                    status.setInt(2, invoiceNumber);
+                    status.setTimestamp(3, Timestamp.from(completedAt));
+                    status.executeUpdate();
+                }
+            }
+        } catch (SQLException e) {
+            throw databaseError(e);
         }
     }
 

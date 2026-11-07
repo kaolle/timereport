@@ -42,7 +42,7 @@ export function configureInvoiceDelivery({request}) {
             if (active !== opened || !dialog.open) return;
             $('invoice-delivery-cc').value = (defaults.cc || []).join(', ');
             $('invoice-delivery-bcc').value = (defaults.bcc || []).join(', ');
-            $('invoice-delivery-email').disabled = false;
+            $('invoice-delivery-email').disabled = lastDelivery?.state === 'SENDING';
             $('invoice-email-status').textContent = lastDelivery ? deliveryMessage(lastDelivery) : '';
         }).catch(() => {
             if (active === opened && dialog.open) $('invoice-email-status').textContent = 'Standardmottagarna kunde inte hämtas. Stäng dialogen och försök igen för att skicka mejl. Du kan fortfarande ladda ner PDF:en.';
@@ -51,8 +51,8 @@ export function configureInvoiceDelivery({request}) {
 
     function deliveryMessage(delivery) {
         if (delivery.state === 'SENT') return `Mejlet har lämnats till e-postservern för ${delivery.recipient}.`;
-        if (delivery.state === 'FAILED') return 'Utskicket kunde inte bekräftas. Kontrollera om mejlet kom fram innan du försöker igen.';
-        return 'Utskicket pågår eller saknar bekräftelse. Samma försök skickas inte automatiskt igen.';
+        if (delivery.state === 'FAILED') return 'Mejlet kunde inte skickas efter flera försök. Kontrollera leveransen innan du försöker igen.';
+        return `Mejlet till ${delivery.recipient} ligger i utkön och skickas automatiskt när mejltjänsten svarar.`;
     }
 
     async function download() {
@@ -120,7 +120,7 @@ export function configureInvoiceDelivery({request}) {
                 const bcc = addresses('invoice-delivery-bcc');
                 const message = $('invoice-delivery-message').value.trim();
                 const content = JSON.stringify({recipient, cc, bcc, message});
-                if (active.lastState) {
+                if (active.lastState && active.lastState !== 'SENDING') {
                     const message = active.lastState === 'SENT' ? 'Fakturan har redan lämnats till e-postservern. Vill du skicka ett nytt mejl?'
                         : 'Ett tidigare utskick saknar bekräftelse och kan ha kommit fram. Vill du göra ett nytt utskicksförsök?';
                     if (!window.confirm(message)) return;
@@ -131,7 +131,7 @@ export function configureInvoiceDelivery({request}) {
                     active.requestId = crypto.randomUUID();
                 }
                 active.attemptContent = content;
-                $('invoice-email-status').textContent = 'Skickar fakturan …';
+                $('invoice-email-status').textContent = 'Lägger mejlet i utkön …';
                 try {
                     const result = await request(`/api/invoicing/invoices/${active.number}/email`, 'POST', {
                         recipient,
@@ -142,8 +142,9 @@ export function configureInvoiceDelivery({request}) {
                     }, 60000);
                     active.lastState = result.state;
                     $('invoice-email-status').textContent = deliveryMessage(result);
-                    if (result.state === 'SENT') {
+                    if (result.state === 'SENT' || result.state === 'SENDING') {
                         $('invoice-delivery-email').checked = false;
+                        $('invoice-delivery-email').disabled = result.state === 'SENDING';
                         $('invoice-delivery-recipient').disabled = true;
                         $('invoice-delivery-recipient').required = false;
                         $('invoice-delivery-cc').disabled = true;

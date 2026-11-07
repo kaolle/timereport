@@ -81,9 +81,11 @@ public class AuthenticationService implements Authentication {
     private void sendToken(Account account, String purpose) {
         String raw = tokens.random();
         repository.consumeTokens(account.id(), purpose);
+        var expiresAt = clock.instant().plus(Duration.ofMinutes(30));
         repository.save(AccountToken.builder().hash(tokens.digest(raw)).accountId(account.id()).purpose(purpose)
-                .expiresAt(clock.instant().plus(Duration.ofMinutes(30))).consumed(false).build());
-        mail.send(account.email(), purpose, raw);
+                .expiresAt(expiresAt).consumed(false).build());
+        mail.cancel(account.id(), purpose);
+        mail.send(account.id(), account.email(), purpose, raw, expiresAt);
     }
 
     @Override
@@ -196,5 +198,7 @@ public class AuthenticationService implements Authentication {
         repository.revokeSessions(accountId);
         repository.consumeTokens(accountId, "verify");
         repository.consumeTokens(accountId, "reset");
+        mail.cancel(accountId, "verify");
+        mail.cancel(accountId, "reset");
     }
 }

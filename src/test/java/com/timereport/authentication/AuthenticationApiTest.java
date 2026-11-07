@@ -1,6 +1,7 @@
 package com.timereport.authentication;
 
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.mailer.MockMailbox;
 import io.smallrye.jwt.build.Jwt;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 @QuarkusTest
 class AuthenticationApiTest {
@@ -21,6 +23,30 @@ class AuthenticationApiTest {
     AuthTestSupport support;
     @Inject
     DataSource dataSource;
+    @Inject
+    MockMailbox mailbox;
+
+    @Test
+    void replacedVerificationLinkIsRemovedFromTheQueueBeforeDelivery() throws Exception {
+        String email = UUID.randomUUID() + "@example.test";
+        for (int attempt = 0; attempt < 2; attempt++)
+            given().header("X-Requested-With", "timereport").contentType("application/json")
+                    .body(Map.of("email", email)).post("/api/auth/register").then().statusCode(202);
+        support.mailToken(email, "verify");
+        assertEquals(1, mailbox.getMailMessagesSentTo(email).size());
+        try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(
+                "SELECT state,payload FROM mail_outbox WHERE account_id=(SELECT id FROM accounts WHERE email=?) AND type='auth-verify'")) {
+            statement.setString(1, email);
+            try (var result = statement.executeQuery()) {
+                var states = new java.util.ArrayList<String>();
+                while (result.next()) {
+                    states.add(result.getString("state"));
+                    assertNull(result.getBytes("payload"));
+                }
+                assertEquals(java.util.List.of("CANCELLED", "SENT"), states.stream().sorted().toList());
+            }
+        }
+    }
 
     @Test
     void anonymousAndForgedTokensCannotReachAnyBusinessApi() {

@@ -1,9 +1,8 @@
 package com.timereport.invoicing.application.port.out;
 
 import com.timereport.invoicing.domain.IssuedInvoiceDocument;
-
-import java.util.List;
+import com.timereport.invoicing.domain.InvoiceDelivery;
 
 public interface InvoiceMail {
-    void send(IssuedInvoiceDocument document, String recipient, String replyTo, List<String> cc, List<String> bcc, String message);
+    void enqueue(IssuedInvoiceDocument document, InvoiceDelivery delivery, String replyTo);
 }

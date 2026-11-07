@@ -13,15 +13,18 @@ public class IssuedInvoiceService implements IssuedInvoices {
     private final InvoiceDeliveryRepository deliveries;
     private final InvoiceStatusRepository statuses;
     private final InvoiceMail mail;
+    private final InvoiceTransaction transaction;
     private final InvoicingSettingsRepository settings;
     private final Clock clock;
 
     public IssuedInvoiceService(InvoiceRepository invoices, InvoiceDeliveryRepository deliveries,
-                                InvoiceStatusRepository statuses, InvoiceMail mail, InvoicingSettingsRepository settings, Clock clock) {
+                                InvoiceStatusRepository statuses, InvoiceMail mail, InvoiceTransaction transaction,
+                                InvoicingSettingsRepository settings, Clock clock) {
         this.invoices = invoices;
         this.deliveries = deliveries;
         this.statuses = statuses;
         this.mail = mail;
+        this.transaction = transaction;
         this.settings = settings;
         this.clock = clock;
     }
@@ -72,16 +75,10 @@ public class IssuedInvoiceService implements IssuedInvoices {
         var attempt = InvoiceDelivery.builder().id(requestId).invoiceNumber(invoiceNumber).recipient(address)
                 .cc(cc == null ? defaults.cc() : cc).bcc(bcc == null ? defaults.bcc() : bcc)
                 .message(message).state(InvoiceDelivery.State.SENDING).requestedAt(clock.instant()).build();
-        if (!deliveries.start(attempt)) return deliveries.find(requestId).orElseThrow();
-        InvoiceDelivery completed;
-        try {
-            mail.send(document, address, replyTo, attempt.cc(), attempt.bcc(), attempt.message());
-            completed = attempt.complete(InvoiceDelivery.State.SENT, clock.instant());
-        } catch (RuntimeException failure) {
-            // SMTP errors can be ambiguous: only an explicit user action may retry.
-            completed = attempt.complete(InvoiceDelivery.State.FAILED, clock.instant());
-        }
-        deliveries.complete(completed);
-        return completed;
+        return transaction.execute(() -> {
+            if (!deliveries.start(attempt)) return deliveries.find(requestId).orElseThrow();
+            mail.enqueue(document, attempt, replyTo);
+            return attempt;
+        });
     }
 }

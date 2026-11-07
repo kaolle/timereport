@@ -128,11 +128,11 @@ async function setup(page, context, {profile = sellerProfile} = {}) {
             const request = route.request().postDataJSON();
             state.deliveryRequests.push(request);
             if (!state.deliveries.has(request.requestId)) {
-                const result = {...request, state: state.failEmail ? 'FAILED' : 'SENT'};
+                const result = {...request, state: state.failEmail ? 'FAILED' : state.queuedEmail ? 'SENDING' : 'SENT'};
                 state.deliveries.set(request.requestId, result);
-                if (!state.failEmail) state.mailSends++;
+                if (!state.failEmail && !state.queuedEmail) state.mailSends++;
                 state.invoices[0].lastDelivery = result;
-                if (!state.failEmail) state.invoices[0].status = {
+                if (!state.failEmail && !state.queuedEmail) state.invoices[0].status = {
                     ...state.invoices[0].status,
                     sent: true,
                     version: state.invoices[0].status.version + 1
@@ -238,6 +238,23 @@ test('copy recipients can be removed for an individual email', async ({page, con
     await page.getByRole('button', {name: 'Genomför valen', exact: true}).click();
     await expect(page.locator('#invoice-email-status')).toContainText('Mejlet har lämnats');
     expect(state.deliveryRequests[0]).toMatchObject({cc: [], bcc: []});
+});
+
+test('queued invoice mail is not marked sent or offered for another send', async ({page, context}) => {
+    const state = await setup(page, context);
+    await issueInvoice(page);
+    state.queuedEmail = true;
+    await page.getByLabel('Ladda ner fakturan som PDF', {exact: true}).uncheck();
+    await page.getByLabel('Skicka fakturan via e-post', {exact: true}).check();
+    await page.getByRole('button', {name: 'Genomför valen', exact: true}).click();
+    await expect(page.locator('#invoice-email-status')).toContainText('ligger i utkön');
+    await expect(page.getByLabel('Skicka fakturan via e-post', {exact: true})).toBeDisabled();
+    expect(state.mailSends).toBe(0);
+    expect(state.invoices[0].status.sent).toBe(false);
+    await page.getByRole('button', {name: 'Stäng', exact: true}).click();
+    await page.getByRole('tab', {name: 'Fakturor', exact: true}).click();
+    await page.getByRole('button', {name: 'Leverera faktura 1061', exact: true}).click();
+    await expect(page.getByLabel('Skicka fakturan via e-post', {exact: true})).toBeDisabled();
 });
 
 test('failed default lookup blocks email but still allows PDF download', async ({page, context}) => {
@@ -358,7 +375,7 @@ test('email failure leaves an issued invoice and still allows its PDF download',
     const downloaded = page.waitForEvent('download');
     await page.getByRole('button', {name: 'Genomför valen', exact: true}).click();
     await downloaded;
-    await expect(page.locator('#invoice-email-status')).toContainText('kunde inte bekräftas');
+    await expect(page.locator('#invoice-email-status')).toContainText('kunde inte skickas');
     expect(state.issued).toBe(1);
     expect(state.mailSends).toBe(0);
     expect(state.invoices[0].status.sent).toBe(false);

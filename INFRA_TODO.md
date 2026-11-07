@@ -66,8 +66,11 @@ bakom samma proxy. Aktivera inte generell tillit till godtyckliga `X-Forwarded-F
 Implementerat med lagrade utskicksförsök och separata Skickad-/Betald-markeringar.
 SENT betyder att SMTP-servern accepterat mejlet. Automatisk hantering av studsar och
 leveranskvitton återstår. `INVOICE_MAIL_FROM` kan anges för separat fakturaavsändare;
-standard är befintlig `MAIL_FROM`. Ingen automatisk SMTP-omsändning sker vid osäkert
-resultat; användaren bekräftar ett nytt försök efter kontroll i Brevo.
+standard är befintlig `MAIL_FROM`. V11 lägger mejl i en krypterad utkö och gör
+begränsade automatiska återförsök. En timeout kan ha osäkert resultat och då ge
+dubbletter vid återförsök. Cloud Scheduler måste väcka kön i Cloud Run; se CLOUD_RUN.md.
+Rensning av avslutade köposter efter 60 dagar är implementerad; skapa det dagliga
+Cloud Scheduler-jobbet enligt CLOUD_RUN.md vid utrullning.
 
 - [x] Utforma och implementera utskick av utfärdade fakturor som PDF-bilaga.
 - [ ] Använd en avsändare på den autentiserade domänen, till exempel
@@ -84,6 +87,9 @@ resultat; användaren bekräftar ett nytt försök efter kontroll i Brevo.
   skapa en ny faktura vid ett misslyckat eller upprepat mejlutskick.
 - [x] Spara leveransstatus och fel utan att logga SMTP-nyckel, fakturans känsliga
   innehåll eller autentiseringslänkar.
+- [x] Rensa avslutade köposter efter 60 dagar och logga antal borttagna.
+- [ ] Skapa dagligt Cloud Scheduler-jobb för mejlköns rensning i produktion.
+- [ ] Skapa larm för slutligt misslyckade mejl och bevaka att Cloud Scheduler körs.
 - [ ] Verifiera SPF, DKIM och DMARC för avsändardomänen samt testa leverans, bilaga,
   Reply-To, studs och återförsök.
 

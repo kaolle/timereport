@@ -1,0 +1,55 @@
+@startuml
+title Tidrapporten - arkitektur för mejlutskick
+left to right direction
+skinparam componentStyle rectangle
+
+actor "Användare" as User
+cloud "Cloud Scheduler" as Scheduler
+database "PostgreSQL\nmail_outbox och fakturastatus" as DB
+cloud "Brevo SMTP" as Brevo
+
+rectangle "Tidrapporten (en Cloud Run-tjänst)" {
+    component "Autentisering" as Auth
+    component "Fakturering" as Invoicing
+    interface "QueueMail" as QueuePort
+    component "MailQueueService" as QueueService
+    component "JdbcMailOutbox" as Outbox
+
+    component "POST /internal/mail/dispatch" as Endpoint
+    component "POST /internal/mail/cleanup" as CleanupEndpoint
+    component "LocalMailDispatcher\n(dev: var 5:e sekund)" as LocalScheduler
+    component "LocalMailCleanup\n(dev: dagligen 03:00)" as LocalCleanup
+    component "MailDispatchService" as Dispatcher
+    component "MailCleanupService" as Cleaner
+    interface "MailTransport" as TransportPort
+    component "QuarkusMailTransport" as SmtpAdapter
+    component "InvoiceMailDeliveryEvents" as DeliveryEvents
+}
+
+User --> Auth : verifiering / återställning
+User --> Invoicing : fakturamejl
+Auth --> QueuePort
+Invoicing --> QueuePort
+QueuePort --> QueueService
+QueueService --> Outbox : enqueue
+Outbox <--> DB : krypterat innehåll\nclaim / finish
+
+Scheduler --> Endpoint : varje minut + token
+Scheduler --> CleanupEndpoint : dagligen + token
+Endpoint --> Dispatcher : dispatch
+CleanupEndpoint --> Cleaner : clean
+LocalScheduler --> Dispatcher : dispatch
+LocalCleanup --> Cleaner : clean
+Dispatcher --> Outbox : claim / finish
+Cleaner --> Outbox : ta bort avslutade > 60 dagar
+Dispatcher --> TransportPort : send
+TransportPort --> SmtpAdapter
+SmtpAdapter --> Brevo : SMTP
+Dispatcher --> DeliveryEvents : slutlig fakturastatus
+DeliveryEvents --> DB : uppdatera leveransstatus
+
+note bottom of DB
+  Mejlinnehåll krypteras med AES-256-GCM.
+  Innehållet rensas när en köpost får slutstatus.
+end note
+@enduml

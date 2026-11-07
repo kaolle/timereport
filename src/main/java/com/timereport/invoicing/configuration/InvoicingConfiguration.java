@@ -13,8 +13,9 @@ public class InvoicingConfiguration {
     @Produces
     @Singleton
     public IssuedInvoices issuedInvoices(InvoiceRepository invoices, InvoiceDeliveryRepository deliveries,
-                                         InvoiceStatusRepository statuses, InvoiceMail mail, InvoicingSettingsRepository settings) {
-        return new IssuedInvoiceService(invoices, deliveries, statuses, mail, settings, Clock.systemUTC());
+                                         InvoiceStatusRepository statuses, InvoiceMail mail, InvoiceTransaction transaction,
+                                         InvoicingSettingsRepository settings) {
+        return new IssuedInvoiceService(invoices, deliveries, statuses, mail, transaction, settings, Clock.systemUTC());
     }
 
     @Produces

@@ -35,17 +35,16 @@ class MailOutboxTest {
     void failedSendIsEncryptedRetriedAndEventuallyClearsItsPayload() throws Exception {
         var reference = reference();
         var message = message("Secret reset link #reset=top-secret-token");
+        doThrow(new IllegalStateException("SMTP rejected token top-secret-token")).doNothing()
+                .when(transport).send(reference, message);
         transaction.execute(() -> queue.enqueue(reference, message, Instant.now().plus(Duration.ofHours(1))));
         byte[] stored = payload(reference);
         assertNotNull(stored);
         assertFalse(new String(stored, StandardCharsets.UTF_8).contains("top-secret-token"));
         assertFalse(new String(stored, StandardCharsets.UTF_8).contains("recipient@example.test"));
-
-        doThrow(new IllegalStateException("SMTP rejected token top-secret-token")).doNothing()
-                .when(transport).send(reference, message);
-        assertEquals(1, dispatcher.dispatch());
         assertEquals("PENDING", state(reference));
         assertNotNull(payload(reference));
+        assertEquals(0, dispatcher.dispatch());
         makeDue(reference);
         assertEquals(1, dispatcher.dispatch());
         verify(transport, times(2)).send(reference, message);
@@ -57,7 +56,11 @@ class MailOutboxTest {
     @Test
     void abandonedLeaseCanBeReclaimedAndStaleWorkerCannotCompleteIt() throws Exception {
         var reference = reference();
-        transaction.execute(() -> queue.enqueue(reference, message("invoice body"), Instant.now().plus(Duration.ofHours(1))));
+        var message = message("invoice body");
+        doThrow(new IllegalStateException("SMTP unavailable")).doNothing()
+                .when(transport).send(reference, message);
+        transaction.execute(() -> queue.enqueue(reference, message, Instant.now().plus(Duration.ofHours(1))));
+        makeDue(reference);
         var stale = outbox.claim(Instant.now(), Instant.now().plusSeconds(60)).orElseThrow();
         try (var connection = dataSource.getConnection(); var update = connection.prepareStatement(
                 "UPDATE mail_outbox SET lease_until=now()-interval '1 second' WHERE id=?")) {
@@ -70,6 +73,42 @@ class MailOutboxTest {
                 Instant.now(), Instant.now(), null)));
         assertFalse(result.get());
         assertEquals("SENT", state(reference));
+    }
+
+    @Test
+    void threeRetriesAfterTheInitialFailureEndInFinalFailure() throws Exception {
+        var reference = reference();
+        var message = message("invoice body");
+        doThrow(new IllegalStateException("SMTP unavailable")).when(transport).send(reference, message);
+
+        transaction.execute(() -> queue.enqueue(reference, message, Instant.now().plus(Duration.ofHours(1))));
+        assertEquals("PENDING", state(reference));
+        for (int retry = 1; retry <= 3; retry++) {
+            makeDue(reference);
+            assertEquals(1, dispatcher.dispatch());
+            assertEquals(retry == 3 ? "FAILED" : "PENDING", state(reference));
+        }
+        verify(transport, times(4)).send(reference, message);
+        assertNull(payload(reference));
+        assertEquals(0, dispatcher.dispatch());
+    }
+
+    @Test
+    void committedMailIsSentImmediatelyButRolledBackMailIsNeverSent() throws Exception {
+        var sent = reference();
+        var message = message("send now");
+        transaction.execute(() -> queue.enqueue(sent, message, Instant.now().plus(Duration.ofHours(1))));
+        verify(transport).send(sent, message);
+        assertEquals("SENT", state(sent));
+        assertEquals(0, dispatcher.dispatch());
+
+        var rolledBack = reference();
+        assertThrows(IllegalStateException.class, () -> transaction.execute(() -> {
+            queue.enqueue(rolledBack, message, Instant.now().plus(Duration.ofHours(1)));
+            throw new IllegalStateException("roll back");
+        }));
+        verify(transport, never()).send(eq(rolledBack), any());
+        assertFalse(exists(rolledBack));
     }
 
     private MailReference reference() throws Exception {
@@ -116,6 +155,16 @@ class MailOutboxTest {
                 "UPDATE mail_outbox SET next_attempt_at=now()-interval '1 second' WHERE id=?")) {
             statement.setObject(1, reference.id());
             statement.executeUpdate();
+        }
+    }
+
+    private boolean exists(MailReference reference) throws Exception {
+        try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(
+                "SELECT 1 FROM mail_outbox WHERE id=?")) {
+            statement.setObject(1, reference.id());
+            try (var result = statement.executeQuery()) {
+                return result.next();
+            }
         }
     }
 }

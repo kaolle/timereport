@@ -75,10 +75,12 @@ public class IssuedInvoiceService implements IssuedInvoices {
         var attempt = InvoiceDelivery.builder().id(requestId).invoiceNumber(invoiceNumber).recipient(address)
                 .cc(cc == null ? defaults.cc() : cc).bcc(bcc == null ? defaults.bcc() : bcc)
                 .message(message).state(InvoiceDelivery.State.SENDING).requestedAt(clock.instant()).build();
-        return transaction.execute(() -> {
+        var queued = transaction.execute(() -> {
             if (!deliveries.start(attempt)) return deliveries.find(requestId).orElseThrow();
             mail.enqueue(document, attempt, replyTo);
             return attempt;
         });
+        // The after-commit mail observer may already have completed delivery.
+        return deliveries.find(requestId).orElse(queued);
     }
 }

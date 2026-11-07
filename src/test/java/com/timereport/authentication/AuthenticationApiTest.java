@@ -27,13 +27,13 @@ class AuthenticationApiTest {
     MockMailbox mailbox;
 
     @Test
-    void replacedVerificationLinkIsRemovedFromTheQueueBeforeDelivery() throws Exception {
+    void replacedVerificationLinkCannotBeReusedAfterImmediateDelivery() throws Exception {
         String email = UUID.randomUUID() + "@example.test";
         for (int attempt = 0; attempt < 2; attempt++)
             given().header("X-Requested-With", "timereport").contentType("application/json")
                     .body(Map.of("email", email)).post("/api/auth/register").then().statusCode(202);
         support.mailToken(email, "verify");
-        assertEquals(1, mailbox.getMailMessagesSentTo(email).size());
+        assertEquals(2, mailbox.getMailMessagesSentTo(email).size());
         try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(
                 "SELECT state,payload FROM mail_outbox WHERE account_id=(SELECT id FROM accounts WHERE email=?) AND type='auth-verify'")) {
             statement.setString(1, email);
@@ -43,7 +43,7 @@ class AuthenticationApiTest {
                     states.add(result.getString("state"));
                     assertNull(result.getBytes("payload"));
                 }
-                assertEquals(java.util.List.of("CANCELLED", "SENT"), states.stream().sorted().toList());
+                assertEquals(java.util.List.of("SENT", "SENT"), states.stream().sorted().toList());
             }
         }
     }

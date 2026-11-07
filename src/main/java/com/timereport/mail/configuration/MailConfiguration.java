@@ -12,8 +12,8 @@ import java.time.Duration;
 public class MailConfiguration {
     @Produces
     @Singleton
-    public QueueMail queueMail(MailOutbox outbox) {
-        return new MailQueueService(outbox, Clock.systemUTC());
+    public QueueMail queueMail(MailOutbox outbox, MailQueuedSignal signal) {
+        return new MailQueueService(outbox, signal, Clock.systemUTC());
     }
 
     @Produces
@@ -21,7 +21,7 @@ public class MailConfiguration {
     public DispatchMail dispatchMail(MailOutbox outbox, MailTransport transport, MailDeliveryEvents events,
                                      MailTransaction transaction) {
         return new MailDispatchService(outbox, transport, events, transaction,
-                new RetryPolicy(6, Duration.ofMinutes(1), Duration.ofHours(2)), Clock.systemUTC(), 20);
+                new RetryPolicy(4, Duration.ofMinutes(1), Duration.ofHours(2)), Clock.systemUTC(), 20);
     }
 
     @Produces

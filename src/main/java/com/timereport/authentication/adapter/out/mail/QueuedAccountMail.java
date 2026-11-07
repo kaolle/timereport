@@ -32,7 +32,7 @@ public class QueuedAccountMail implements AccountMail {
         queue.enqueue(new MailReference(accountId, "auth-" + purpose, UUID.randomUUID()),
                 MailMessage.builder().recipient(email).subject(title)
                         .text(title + " i Tidrapporten:\n\n" + link
-                                + "\n\nLänken gäller i 30 minuter och kan användas en gång. Ignorera mejlet om du inte begärde det.")
+                                + "\n\nLänken gäller i två timmar och kan användas en gång. Ignorera mejlet om du inte begärde det.")
                         .from(SmtpAddress.named("Tidrapporten", from)).cc(List.of()).bcc(List.of()).attachments(List.of()).build(), expiresAt);
     }
 

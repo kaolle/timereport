@@ -9,6 +9,7 @@ public interface MailOutbox {
     void enqueue(MailReference reference, MailMessage message, Instant now, Instant expiresAt);
     void cancel(UUID accountId, String type, Instant now);
     Optional<MailClaim> claim(Instant now, Instant leaseUntil);
+    Optional<MailClaim> claim(MailReference reference, Instant now, Instant leaseUntil);
     boolean finish(MailClaim claim, MailState state, Instant now, Instant nextAttemptAt, String errorCode);
     int deleteCompletedBefore(Instant cutoff);
 }

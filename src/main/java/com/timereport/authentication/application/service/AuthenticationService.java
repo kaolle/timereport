@@ -81,7 +81,7 @@ public class AuthenticationService implements Authentication {
     private void sendToken(Account account, String purpose) {
         String raw = tokens.random();
         repository.consumeTokens(account.id(), purpose);
-        var expiresAt = clock.instant().plus(Duration.ofMinutes(30));
+        var expiresAt = clock.instant().plus(Duration.ofHours(2));
         repository.save(AccountToken.builder().hash(tokens.digest(raw)).accountId(account.id()).purpose(purpose)
                 .expiresAt(expiresAt).consumed(false).build());
         mail.cancel(account.id(), purpose);

@@ -61,6 +61,19 @@ samt verifiering av konton, tider och rapporter.
 Appen ignorerar vidarebefordrade IP-headers och kan därför dela IP-kvot mellan användare
 bakom samma proxy. Aktivera inte generell tillit till godtyckliga `X-Forwarded-For`-värden.
 
+## Autentisera Cloud Scheduler utan statisk dispatch-token
+
+- [ ] Ersätt `X-Mail-Dispatch-Token` i Scheduler-jobben för `/internal/mail/dispatch` och
+  `/internal/mail/cleanup` med OIDC-token från ett dedikerat servicekonto.
+- [ ] Verifiera tokenens signatur, utfärdare, mottagare (`aud`) och servicekontots identitet
+  i båda endpointsen. Cloud Run-tjänsten är publik för webbsidan, så kontrollen måste ske
+  i applikationen. Avvisa anrop utan giltig token.
+- [ ] Uppdatera Scheduler-jobben och verifiera båda körningarna innan den statiska headern,
+  `MAIL_DISPATCH_TOKEN` och motsvarande Secret Manager-hemlighet tas bort. Uppdatera `CLOUD_RUN.md`.
+
+[Cloud Scheduler OIDC](https://docs.cloud.google.com/scheduler/docs/http-target-auth) ·
+[Scheduler-jobbens HTTP-konfiguration](https://docs.cloud.google.com/scheduler/docs/reference/rest/v1/projects.locations.jobs)
+
 ## Skicka utfärdade fakturor via e-post
 
 Implementerat med lagrade utskicksförsök och separata Skickad-/Betald-markeringar.
@@ -88,6 +101,8 @@ Cloud Scheduler-jobbet enligt CLOUD_RUN.md vid utrullning.
 - [x] Spara leveransstatus och fel utan att logga SMTP-nyckel, fakturans känsliga
   innehåll eller autentiseringslänkar.
 - [x] Rensa avslutade köposter efter 60 dagar och logga antal borttagna.
+- [ ] När direktutskicket har deployats och verifierats, ändra dispatch-jobbet i produktion
+  från varje minut till `*/30 * * * *`. Behåll den schemalagda körningen för återförsök.
 - [ ] Skapa dagligt Cloud Scheduler-jobb för mejlköns rensning i produktion.
 - [ ] Skapa larm för slutligt misslyckade mejl och bevaka att Cloud Scheduler körs.
 - [ ] Verifiera SPF, DKIM och DMARC för avsändardomänen samt testa leverans, bilaga,

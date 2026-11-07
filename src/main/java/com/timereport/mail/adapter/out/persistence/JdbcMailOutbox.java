@@ -71,16 +71,44 @@ public class JdbcMailOutbox implements MailOutbox {
             statement.setTimestamp(3, Timestamp.from(leaseUntil));
             statement.setObject(4, lease);
             try (var result = statement.executeQuery()) {
-                if (!result.next()) return Optional.empty();
-                return Optional.of(MailClaim.builder()
-                        .reference(new MailReference(result.getObject("account_id", UUID.class), result.getString("type"), result.getObject("id", UUID.class)))
-                        .message(codec.decrypt(result.getBytes("payload")))
-                        .expiresAt(result.getTimestamp("expires_at").toInstant())
-                        .attempt(result.getInt("attempts")).leaseToken(lease).build());
+                return claimed(result, lease);
             }
         } catch (SQLException e) {
             throw new IllegalStateException("Mail claim failed", e);
         }
+    }
+
+    @Override
+    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    public Optional<MailClaim> claim(MailReference reference, Instant now, Instant leaseUntil) {
+        UUID lease = UUID.randomUUID();
+        String sql = "WITH candidate AS (SELECT id FROM mail_outbox WHERE id=? AND account_id=? AND type=? "
+                + "AND state='PENDING' AND next_attempt_at<=? FOR UPDATE SKIP LOCKED) "
+                + "UPDATE mail_outbox m SET state='SENDING',lease_until=?,lease_token=?,attempts=m.attempts+1 "
+                + "FROM candidate WHERE m.id=candidate.id "
+                + "RETURNING m.id,m.account_id,m.type,m.payload,m.expires_at,m.attempts";
+        try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, reference.id());
+            statement.setObject(2, reference.accountId());
+            statement.setString(3, reference.type());
+            statement.setTimestamp(4, Timestamp.from(now));
+            statement.setTimestamp(5, Timestamp.from(leaseUntil));
+            statement.setObject(6, lease);
+            try (var result = statement.executeQuery()) {
+                return claimed(result, lease);
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Immediate mail claim failed", e);
+        }
+    }
+
+    private Optional<MailClaim> claimed(java.sql.ResultSet result, UUID lease) throws SQLException {
+        if (!result.next()) return Optional.empty();
+        return Optional.of(MailClaim.builder()
+                .reference(new MailReference(result.getObject("account_id", UUID.class), result.getString("type"), result.getObject("id", UUID.class)))
+                .message(codec.decrypt(result.getBytes("payload")))
+                .expiresAt(result.getTimestamp("expires_at").toInstant())
+                .attempt(result.getInt("attempts")).leaseToken(lease).build());
     }
 
     @Override

@@ -338,7 +338,8 @@ HTTP response retains the ID in the dialog. Explicit resends use a new ID and as
 for confirmation. The invoice request and its encrypted mail queue entry commit in
 one transaction. `SENDING` means queued or being retried, `SENT` means SMTP accepted
 the message, and `FAILED` means retries were exhausted or the message expired.
-The worker tries up to six times with increasing delays (one minute to two hours).
+The worker makes one immediate attempt and up to three retries after the backoff
+delay has elapsed; production checks the queue every 30 minutes.
 A queued invoice blocks another send for that invoice; after a final failure the user
 can explicitly request a new send. Each invoice permits five requests per hour.
 An SMTP timeout can have an ambiguous outcome: automatic retry may occasionally
@@ -466,11 +467,15 @@ Generate the separate outbox key with `openssl rand -base64 32` and a random dis
 token with `openssl rand -hex 32`. Store them in Secret Manager. Do not rotate the
 outbox key until every pending message has completed, or those messages cannot be
 decrypted. Prepare both secrets and the Cloud Scheduler job before deploying this
-version. Production does not run the local mail timer: Cloud Scheduler calls
-`POST /internal/mail/dispatch` every minute with the `X-Mail-Dispatch-Token` header.
+version. After a successful database commit, the service attempts the first delivery
+before returning the HTTP response. Production does not run the local mail timer:
+Cloud Scheduler calls `POST /internal/mail/dispatch` every 30 minutes as a recovery
+pass with the `X-Mail-Dispatch-Token` header.
 An invalid token is rejected. Each call processes at most 20 messages or 40 seconds;
 several instances may work concurrently without claiming the same queued row.
-Development runs the worker every five seconds; tests invoke it explicitly.
+SMTP failures get at most three retries after the first attempt. Verification and reset
+links expire after two hours so scheduled retries can complete before expiry.
+Development runs the worker every five seconds as a fallback.
 The cleanup job deletes `SENT`, `FAILED`, `EXPIRED`, and `CANCELLED` outbox rows 60 days
 after `completed_at`; it never deletes `PENDING` or `SENDING` work. Each run logs its
 cutoff and deleted-row count, including zero. Development schedules cleanup daily at

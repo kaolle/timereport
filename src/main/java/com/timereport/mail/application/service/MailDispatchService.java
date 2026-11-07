@@ -42,6 +42,15 @@ public class MailDispatchService implements DispatchMail {
         return count;
     }
 
+    @Override
+    public int dispatch(MailReference reference) {
+        var now = clock.instant();
+        var next = outbox.claim(reference, now, now.plus(Duration.ofMinutes(5)));
+        if (next.isEmpty()) return 0;
+        deliver(next.get());
+        return 1;
+    }
+
     private void deliver(MailClaim claim) {
         MailState result;
         String error = null;

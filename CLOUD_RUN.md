@@ -161,15 +161,24 @@ att du har skapat kontot och deploya en ny revision.
 **Inför utrullningen av mejlkön:** lägg till de två nya secrets ovan på den befintliga
 Cloud Run-tjänsten innan nästa image deployas. Start av den nya versionen kräver båda
 värdena. Låt samma AES-nyckel ligga kvar i senare revisioner medan köade mejl finns.
-Skapa dessutom en **Cloud Scheduler**-job i samma projekt med HTTP-metoden `POST`,
-schemat `* * * * *` (varje minut) och målet
+När ett mejl läggs i kön försöker appen skicka det direkt efter lyckad databas-commit,
+innan HTTP-anropet avslutas. Vid SMTP-fel ligger mejlet kvar för automatiska återförsök
+(ett första försök och högst tre omförsök). Begränsa SMTP-väntan i produktion till
+15 sekunder så att användarens anrop inte blockeras längre än nödvändigt.
+
+Skapa dessutom ett **Cloud Scheduler**-jobb i samma projekt med HTTP-metoden `POST`,
+schemat `*/30 * * * *` (var 30:e minut) och målet
 `https://DIN-PUBLIC_URL/internal/mail/dispatch`. Sätt headern
 `X-Mail-Dispatch-Token` till exakt samma värde som `MAIL_DISPATCH_TOKEN` och begränsa
 åtkomsten till jobbets konfiguration. Välj en HTTP-timeout på minst 60 sekunder och
 testa jobbet manuellt. Tjänstens publika åtkomst behövs fortfarande för webbsidan;
 det interna anropet kontrollerar den separata tokenen. Cloud Run med begärandebaserad
-CPU och noll minimiinstanser behöver denna väckning för att kön ska tömmas pålitligt.
-Det lokala utvecklingsläget tömmer kön automatiskt var femte sekund.
+CPU och noll minimiinstanser behöver denna väckning för återförsök och för mejl som
+inte hann skickas direkt. Verifierings- och återställningslänkar gäller i två timmar,
+så omförsöken hinner ske inom giltighetstiden. Det lokala utvecklingsläget tömmer kön
+var femte sekund som reserv.
+Vid uppgradering av ett befintligt system: deploya direktutskicket först, verifiera det
+med ett testmejl och ändra därefter Scheduler-jobbet från varje minut till var 30:e minut.
 
 Skapa ett **separat Cloud Scheduler-jobb för rensning** med HTTP-metoden `POST`,
 schemat `0 3 * * *` och tidszonen `Etc/UTC`. Målet är

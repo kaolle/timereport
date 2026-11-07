@@ -2,6 +2,9 @@
 
 ## Betalning för faktura
 
+Implementeringsplan med månads-/årsabonnemang, kortsäkerhet, åtkomstregler och
+etapper finns i [SUBSCRIPTION_IMPLEMENTATION_PLAN.md](SUBSCRIPTION_IMPLEMENTATION_PLAN.md).
+
 - [ ] Utred betalning för Tidrapportens SaaS-abonnemang: gratis tidrapportering och en betald faktureringsmodul. Stripe
   är preliminär betaltjänst för abonnemang till tjänsteägarens företag och kan skicka PDF-faktura i SEK. Verifiera stöd
   för svenskt bankgiro och OCR samt e-faktura till svenska företags ekonomisystem, inklusive om ytterligare integration

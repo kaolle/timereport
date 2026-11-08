@@ -16,10 +16,11 @@ public class IssuedInvoiceService implements IssuedInvoices {
     private final InvoiceTransaction transaction;
     private final InvoicingSettingsRepository settings;
     private final Clock clock;
+    private final InvoiceCreationAccess access;
 
     public IssuedInvoiceService(InvoiceRepository invoices, InvoiceDeliveryRepository deliveries,
                                 InvoiceStatusRepository statuses, InvoiceMail mail, InvoiceTransaction transaction,
-                                InvoicingSettingsRepository settings, Clock clock) {
+                                InvoicingSettingsRepository settings, Clock clock, InvoiceCreationAccess access) {
         this.invoices = invoices;
         this.deliveries = deliveries;
         this.statuses = statuses;
@@ -27,6 +28,7 @@ public class IssuedInvoiceService implements IssuedInvoices {
         this.transaction = transaction;
         this.settings = settings;
         this.clock = clock;
+        this.access = access;
     }
 
     @Override
@@ -65,6 +67,7 @@ public class IssuedInvoiceService implements IssuedInvoices {
 
     @Override
     public InvoiceDelivery send(int invoiceNumber, String recipient, List<String> cc, List<String> bcc, String message, UUID requestId) {
+        access.requireAccess();
         var document = get(invoiceNumber);
         String address = InvoiceDelivery.email(recipient);
         String replyTo = companyEmail(document);

@@ -352,6 +352,18 @@ earlier migration scripts are unchanged. V9 adds the customer's contact email an
 stores the exact CC/BCC lists on each delivery attempt. For API clients, omitted
 or null copy lists use the defaults; explicit empty lists suppress those copies.
 
+## Subscriptions
+
+Subscription stage 1 now stores account-bound invoicing entitlements (migration V13).
+V13 keeps separate Stripe subscription agreements for repeat purchases after an unpaid
+renewal; the old paid-period history remains attached to its agreement.
+The paid-invoicing gate is disabled by default while Checkout and the existing-account
+transition are unfinished. `GET /api/subscription` returns the authenticated account's
+entitlement; only the account ID from the verified session is used. The one-time owner
+grant and its verification/revocation procedure are documented in
+[SUBSCRIPTION_OWNER_ACCESS.md](SUBSCRIPTION_OWNER_ACCESS.md). The remaining steps are in
+[SUBSCRIPTION_IMPLEMENTATION_PLAN.md](SUBSCRIPTION_IMPLEMENTATION_PLAN.md).
+
 ## Authentication
 
 By default, registration is email first: request a verification link, open it, choose

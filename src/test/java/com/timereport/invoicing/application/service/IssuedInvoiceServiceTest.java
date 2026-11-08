@@ -28,7 +28,8 @@ class IssuedInvoiceServiceTest {
     };
     private final InvoicingSettingsRepository settings = mock(InvoicingSettingsRepository.class);
     private final Clock clock = Clock.fixed(Instant.parse("2026-10-25T10:00:00Z"), ZoneOffset.UTC);
-    private final IssuedInvoiceService service = new IssuedInvoiceService(invoices, deliveries, statuses, mail, transaction, settings, clock);
+    private final IssuedInvoiceService service = new IssuedInvoiceService(invoices, deliveries, statuses, mail, transaction, settings, clock,
+            mock(InvoiceCreationAccess.class));
 
     private IssuedInvoiceDocument document() {
         var seller = new SellerBillingProfile("Example AB", "Gatan 1", "12345", "Ort", "Sverige", "", "", "", "company@example.test", "SEK", 30, BigDecimal.valueOf(25), true);

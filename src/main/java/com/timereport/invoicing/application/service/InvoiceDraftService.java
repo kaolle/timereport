@@ -2,6 +2,7 @@ package com.timereport.invoicing.application.service;
 
 import com.timereport.invoicing.application.port.in.InvoiceDrafts;
 import com.timereport.invoicing.application.port.in.InvoicingSettings;
+import com.timereport.invoicing.application.port.out.InvoiceCreationAccess;
 import com.timereport.invoicing.domain.CustomerCodeBilling;
 import com.timereport.invoicing.domain.InvoiceDraft;
 import com.timereport.timeentry.application.port.in.TimeEntries;
@@ -21,13 +22,15 @@ public class InvoiceDraftService implements InvoiceDrafts {
     private static final BigDecimal ZERO = new BigDecimal("0.00");
     private final InvoicingSettings settings;
     private final TimeEntries entries;
+    private final InvoiceCreationAccess access;
 
-    public InvoiceDraftService(InvoicingSettings settings, TimeEntries entries) {
-        this.settings = settings; this.entries = entries;
+    public InvoiceDraftService(InvoicingSettings settings, TimeEntries entries, InvoiceCreationAccess access) {
+        this.settings = settings; this.entries = entries; this.access = access;
     }
 
     @Override
     public InvoiceDraft create(String month, UUID customerId) {
+        access.requireAccess();
         if (month == null || !month.matches("\\d{4}-(0[1-9]|1[0-2])")) throw new IllegalArgumentException("Välj en giltig månad.");
         if (customerId == null) throw new IllegalArgumentException("Välj en kund.");
         LocalDate from = LocalDate.parse(month + "-01");

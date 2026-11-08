@@ -14,8 +14,8 @@ public class InvoicingConfiguration {
     @Singleton
     public IssuedInvoices issuedInvoices(InvoiceRepository invoices, InvoiceDeliveryRepository deliveries,
                                          InvoiceStatusRepository statuses, InvoiceMail mail, InvoiceTransaction transaction,
-                                         InvoicingSettingsRepository settings) {
-        return new IssuedInvoiceService(invoices, deliveries, statuses, mail, transaction, settings, Clock.systemUTC());
+                                         InvoicingSettingsRepository settings, InvoiceCreationAccess access) {
+        return new IssuedInvoiceService(invoices, deliveries, statuses, mail, transaction, settings, Clock.systemUTC(), access);
     }
 
     @Produces
@@ -26,8 +26,8 @@ public class InvoicingConfiguration {
 
     @Produces
     @Singleton
-    public InvoiceDrafts invoiceDrafts(InvoicingSettings settings, TimeEntries entries) {
-        return new InvoiceDraftService(settings, entries);
+    public InvoiceDrafts invoiceDrafts(InvoicingSettings settings, TimeEntries entries, InvoiceCreationAccess access) {
+        return new InvoiceDraftService(settings, entries, access);
     }
 
     @Produces
@@ -40,7 +40,7 @@ public class InvoicingConfiguration {
     @Singleton
     public InvoiceIssuance invoiceIssuance(InvoiceDrafts drafts, InvoicingSettings settings,
                                            InvoiceRepository repository, InvoiceTransaction transaction,
-                                           InvoicePdfGenerator pdfGenerator) {
-        return new InvoiceIssuanceService(drafts, settings, repository, transaction, pdfGenerator);
+                                           InvoicePdfGenerator pdfGenerator, InvoiceCreationAccess access) {
+        return new InvoiceIssuanceService(drafts, settings, repository, transaction, pdfGenerator, access);
     }
 }

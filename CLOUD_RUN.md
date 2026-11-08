@@ -208,6 +208,13 @@ En första begäran kan ta längre tid när både Cloud Run och Neon har gått i
 Schemalagda hälsopingar till databasen kan motverka Neons vila.
 
 Flyway kör oföränderliga migreringar vid start. Ändra aldrig redan använda SQL-filer.
+V13 skapar abonnemangstabeller och ger det befintliga `kaolle@gmail.com`-kontot
+spårbar ägaråtkomst. Varje Stripe-abonnemang får en egen historikrad så att en
+återvändande kund kan starta ett nytt abonnemang efter en obetald period.
+Verifiera grant-raden efter deployment enligt
+[SUBSCRIPTION_OWNER_ACCESS.md](SUBSCRIPTION_OWNER_ACCESS.md). Låt
+`SUBSCRIPTION_ENFORCE_INVOICE_ACCESS` vara avstängd tills köpen och övergången för
+befintliga konton är färdiga.
 En återgång till föregående Cloud Run-revision återställer bara programmet, inte databasen.
 Håll därför migreringar kompatibla med föregående revision och ordna backup före skarp drift.
 Kvarvarande infrastrukturarbete finns i [INFRA_TODO.md](INFRA_TODO.md), inklusive

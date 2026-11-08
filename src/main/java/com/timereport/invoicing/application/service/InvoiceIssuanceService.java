@@ -6,6 +6,7 @@ import com.timereport.invoicing.application.port.in.InvoicingSettings;
 import com.timereport.invoicing.application.port.out.InvoicePdfGenerator;
 import com.timereport.invoicing.application.port.out.InvoiceRepository;
 import com.timereport.invoicing.application.port.out.InvoiceTransaction;
+import com.timereport.invoicing.application.port.out.InvoiceCreationAccess;
 import com.timereport.invoicing.domain.IssuedInvoice;
 import com.timereport.invoicing.domain.IssuedInvoiceDocument;
 import com.timereport.invoicing.domain.InvoiceLineAdjustment;
@@ -29,23 +30,28 @@ public class InvoiceIssuanceService implements InvoiceIssuance {
     private final InvoiceRepository invoices;
     private final InvoiceTransaction transaction;
     private final InvoicePdfGenerator pdfGenerator;
+    private final InvoiceCreationAccess access;
 
     public InvoiceIssuanceService(InvoiceDrafts drafts, InvoicingSettings settings, InvoiceRepository invoices,
-                                  InvoiceTransaction transaction, InvoicePdfGenerator pdfGenerator) {
+                                  InvoiceTransaction transaction, InvoicePdfGenerator pdfGenerator,
+                                  InvoiceCreationAccess access) {
         this.drafts = drafts;
         this.settings = settings;
         this.invoices = invoices;
         this.transaction = transaction;
         this.pdfGenerator = pdfGenerator;
+        this.access = access;
     }
 
     @Override
     public IssuedInvoiceDocument preview(String month, UUID customerId, List<InvoiceLineAdjustment> adjustments) {
+        access.requireAccess();
         return createDocument(month, customerId, invoices.getNextNumber(), adjustments, true);
     }
 
     @Override
     public IssuedInvoiceDocument issue(String month, UUID customerId, List<InvoiceLineAdjustment> adjustments) {
+        access.requireAccess();
         return transaction.execute(() -> createDocument(month, customerId, invoices.allocateNextNumber(), adjustments, false));
     }
 

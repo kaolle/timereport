@@ -1,6 +1,6 @@
 # Implementeringsplan: betald fakturering i Tidrapporten
 
-Datum: 2026-11-02. Status: förslag, ingen betalningsfunktion implementerad.
+Datum: 2026-11-02. Status: etapp 1 påbörjad; ingen betalningsfunktion implementerad.
 
 ## Mål och avgränsning
 
@@ -42,6 +42,12 @@ för moms på sina egna fakturor ska inte styra moms på Tidrapportens abonneman
 - Föreslagen respit: sju dagar vid misslyckad förnyelse för en tidigare betalande
   kund, räknat från den betalda periodens slut. Första misslyckade betalningen ger
   ingen åtkomst. Upprepade betalningsförsök får inte flytta fram respitens slut.
+- Beslutat: om förnyelsen fortfarande är obetald när respiten löper ut avslutas
+  det gamla abonnemanget och dess automatiska betalningsförsök. En kund som
+  återkommer startar ett nytt abonnemang och debiteras från den nya perioden,
+  utan automatisk retroaktiv debitering för den missade månaden. Hantera den
+  gamla obetalda fakturan uttryckligen hos Stripe så att den inte dras senare.
+  Betalning under respiten kan rädda det befintliga abonnemanget.
 - Byte mellan månad och år sker vid nästa periodgräns. Planera detta med Stripe
   subscription schedules och tydlig bekräftelse av nästa pris/datum; öppna inte
   omedelbara planbyten i portalen innan reglerna är implementerade och testade.
@@ -87,6 +93,8 @@ leverantören alltid enbart är biträde. Se
 - Separera tabeller för abonnemang, betalade perioder, checkout-försök, behandlade
   Stripe-händelser och manuella åtkomstbeslut. Unika Stripe-id:n och kontonycklar
   ska förhindra dubbla betalperioder och koppling till fel konto.
+- Bevara abonnemangshistorik per konto så att ett nytt Stripe-abonnemang kan skapas
+  efter en missad period utan att gamla betalningar eller händelser skrivs över.
 - Definiera inkommande portar för abonnemangsstatus, Checkout, portal och behandling
   av betalningshändelser. Utgående portar hanterar lagring, betaltjänst och klocka.
   Stripe-SDK och JSON stannar i adaptrarna.
@@ -141,6 +149,10 @@ som sparar vem, när och varför. Aktivera inte produktionsspärren innan utrull
 - Tåla dubbletter, fördröjning och fel ordning. Lås per abonnemang, hämta aktuellt
   Stripe-tillstånd vid avstämning och förhindra att gamla händelser återaktiverar
   avslutad åtkomst eller förlänger respit.
+- När respiten tar slut utan betalning: stoppa det gamla abonnemanget och
+  betalningsförsöken, stäng den obetalda förnyelsefakturan enligt produktregeln
+  och tillåt ett nytt Checkout-köp. Ett sent `invoice.paid` för det avslutade
+  abonnemanget får inte ge ny åtkomst utan avstämning.
 - Hantera återbetalnings-/tvistnotiser med spårbart beslut och larm. Inför en
   avstämningsrutin för missade händelser, samt säker schemalagd körning i molnet.
 - Spara planerade förnyelsepåminnelser med abonnemang, förnyelsedatum, påminnelsetyp
@@ -194,6 +206,9 @@ gratisflödet eller åtkomsten till befintliga fakturor försvinner.
   dubbletter, samtidiga köp, omstart, webhook-ordning och idempotens.
 - Stripe-testmiljö och testklockor för lyckad/nekad förnyelse, extra autentisering,
   kortbyte, planbyte vid periodslut, uppsägning, återbetalning och tvist.
+- Testa både betalning under respiten och en helt missad månad följd av nytt köp.
+  Bekräfta att det gamla abonnemanget inte debiteras igen, att gamla händelser
+  inte återaktiverar det och att det nya köpet inte tar bort historiken.
 - Webbläsartester för månads-/årsval, avbruten Checkout, väntande betalning,
   returnavigering, spärrade API-anrop och fortsatt gratis/offline tidrapportering.
 - Testa påminnelser sju dagar/en kalendermånad före förnyelse, månadsslut, skottår,

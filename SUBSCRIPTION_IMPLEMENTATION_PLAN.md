@@ -1,6 +1,7 @@
 # Implementeringsplan: betald fakturering i Tidrapporten
 
-Datum: 2026-11-02. Status: etapp 1 påbörjad; ingen betalningsfunktion implementerad.
+Datum: 2026-11-02. Status: etapp 1 klar; etapp 2:s backend och testläge påbörjade.
+Stripe-händelser och skarp betalspärr återstår.
 
 ## Mål och avgränsning
 
@@ -117,6 +118,9 @@ API-anrop, och det går att ge/återkalla ditt ägarundantag med ett avgränsat 
 som sparar vem, när och varför. Aktivera inte produktionsspärren innan utrullningsplanen i etapp 6.
 
 ## Etapp 2: månads- och årsköp i Stripes testmiljö
+
+Flödena för nytt köp, återförsök, Stripe-retur och kundportal finns i
+[PlantUML-diagrammet](puml/subscription-stage2-flow.puml).
 
 - Skapa testprodukt/priser och lagra deras id:n i serverkonfiguration.
 - Föreslagna API:er: `GET /api/subscription`, `POST /api/subscription/checkout`

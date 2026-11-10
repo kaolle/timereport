@@ -10,11 +10,12 @@ import java.time.Instant;
 @Builder
 public record SubscriptionStatusResponse(SubscriptionPlan plan, SubscriptionState status, Instant paidUntil,
                                          Instant graceUntil, boolean cancelAtPeriodEnd, boolean ownerAccess,
-                                         boolean entitled) {
-    public static SubscriptionStatusResponse from(SubscriptionSnapshot snapshot, Instant now) {
+                                         boolean entitled, boolean invoicingAvailable) {
+    public static SubscriptionStatusResponse from(SubscriptionSnapshot snapshot, Instant now,
+                                                  boolean invoicingAvailable) {
         return SubscriptionStatusResponse.builder().plan(snapshot.plan()).status(snapshot.state())
                 .paidUntil(snapshot.paidUntil()).graceUntil(snapshot.graceUntil())
                 .cancelAtPeriodEnd(snapshot.cancelAtPeriodEnd()).ownerAccess(snapshot.ownerAccess())
-                .entitled(snapshot.canInvoiceAt(now)).build();
+                .entitled(snapshot.canInvoiceAt(now)).invoicingAvailable(invoicingAvailable).build();
     }
 }

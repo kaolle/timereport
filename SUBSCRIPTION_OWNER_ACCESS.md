@@ -4,6 +4,9 @@ Migration V13 skapar en engångsbehörighet för det befintliga kontot `kaolle@g
 om kontot finns när migrationen körs. Rättigheten binds till kontots UUID. Ett nytt konto
 med samma e-postadress får inte rättigheten automatiskt. Faktureringsspärren är avstängd
 under etapp 1 (`SUBSCRIPTION_ENFORCE_INVOICE_ACCESS=false`).
+Från förlanseringen är den separata inställningen
+`SUBSCRIPTION_INVOICING_OWNER_ONLY=true` aktiv som standard och kräver denna grant
+för hela faktureringsmodulen. Kontrollera därför raden före driftsättning.
 
 Kontrollera efter migrering i **rätt databas**:
 

@@ -166,8 +166,13 @@
 
         </details>
         </section>
-        <section id="invoicing-view" class="panel invoicing-view" data-view-panel="invoicing" aria-labelledby="invoicing-title" hidden>
+        <section id="invoicing-view" class="panel invoicing-view invoicing-restricted" data-view-panel="invoicing" aria-labelledby="invoicing-title" hidden>
             <h2 id="invoicing-title">Fakturering</h2>
+            <div id="invoicing-coming-soon" class="invoicing-coming-soon" role="status">
+                <h3 id="invoicing-availability-title">Kontrollerar fakturering</h3>
+                <p id="invoicing-availability-message">Kontrollerar åtkomst …</p>
+                <button id="invoicing-availability-retry" type="button" class="secondary-button">Kontrollera igen</button>
+            </div>
             <div class="invoice-navigation" role="tablist" aria-label="Faktureringsmeny">
                 <button type="button" id="invoice-tab-new" role="tab" data-invoice-view="new" aria-controls="invoice-panel-new" aria-selected="true">Ny faktura</button>
                 <button type="button" id="invoice-tab-history" role="tab" data-invoice-view="history"

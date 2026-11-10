@@ -17,6 +17,7 @@ async function setup(page, context) {
         const request = route.request();
         const url = new URL(request.url());
         if (url.pathname === '/api/auth/refresh') return route.fulfill({ json: { accessToken: 'codes-access', expiresIn: 300, account } });
+        if (url.pathname === '/api/subscription') return route.fulfill({json: {invoicingAvailable: true}});
         if (url.pathname === '/api/customer-codes') return route.fulfill({ json: state.codes });
         if (url.pathname.startsWith('/api/customer-codes/') && request.method() === 'PUT') {
             const code = decodeURIComponent(url.pathname.slice('/api/customer-codes/'.length));

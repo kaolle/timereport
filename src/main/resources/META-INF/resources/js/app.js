@@ -4,6 +4,7 @@ import {configureSynchronization} from './synchronization.js';
 import {configureMonthlyReport} from './report.js';
 import {configureAppShell, configureNavigation, prepareOffline} from './app-shell.js';
 import {configureInvoicingSettings} from './invoicing-settings.js';
+import {configureInvoicingAccess} from './invoicing-access.js';
 import {configureAccountTools, logout, requireAccount} from './auth.js';
 import {configureCommentSuggestions} from './comment-suggestions.js';
 import {formatMinutes, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
@@ -51,6 +52,7 @@ const changes = 'BroadcastChannel' in window ? new BroadcastChannel(`timereport-
 
 const monthlyReport = configureMonthlyReport({onCache: reloadLocal});
 const invoicingSettings = configureInvoicingSettings();
+const invoicingAccess = configureInvoicingAccess(() => invoicingSettings.refreshIfOpen());
 
 const synchronization = configureSynchronization({
     isReady: () => ready,
@@ -92,12 +94,22 @@ const {renderCodes, refreshCodes, refreshBillingLabels} = customerCodes;
 
 configureNavigation(view => {
     if (view === 'report') void monthlyReport.refreshIfOpen();
-    if (view === 'invoicing') void invoicingSettings.refreshIfOpen();
+    if (view === 'invoicing') void invoicingAccess.refreshIfOpen();
 });
 
 function message(id, text) {
     $(id).textContent = text;
     $(id).hidden = !text;
+}
+
+const subscriptionReturn = new URLSearchParams(window.location.search);
+if (subscriptionReturn.has('subscription')) {
+    const result = subscriptionReturn.get('subscription');
+    if (result === 'processing') message('notice', 'Betalningen behandlas. Faktureringen öppnas först när betalningen har bekräftats.');
+    if (result === 'cancelled') message('notice', 'Köpet avbröts. Ingen betalning har bekräftats.');
+    subscriptionReturn.delete('subscription');
+    const remaining = subscriptionReturn.toString();
+    history.replaceState(null, '', `${location.pathname}${remaining ? `?${remaining}` : ''}${location.hash}`);
 }
 
 function clearFormError() {

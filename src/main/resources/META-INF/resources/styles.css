@@ -7,6 +7,9 @@ button, summary { cursor: pointer; }
 button { min-height: 46px; border: 0; border-radius: 10px; transition: background .15s; }
 button:disabled { opacity: .5; cursor: not-allowed; }
 [hidden] { display: none !important; }
+.invoicing-restricted > :not(#invoicing-title):not(#invoicing-coming-soon) { display: none !important; }
+.invoicing-coming-soon { margin-top: 20px; padding: 20px; border-radius: 14px; background: #f3f6f0; }
+.invoicing-coming-soon h3 { margin: 0; }
 :focus-visible { outline: 3px solid #8caa47; outline-offset: 3px; }
 .skip-link { position: fixed; top: 10px; left: 15px; background: white; z-index: 20; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .skip-link:focus-visible { width: auto; height: auto; clip-path: none; padding: 15px; }

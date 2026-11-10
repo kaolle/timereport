@@ -4,7 +4,8 @@ const A = {accountId: '11111111-1111-4111-8111-111111111111', email: 'a@example.
 const B = {accountId: '22222222-2222-4222-8222-222222222222', email: 'b@example.test'};
 
 async function mock(context) {
-    const state = {account: null, calls: [], writes: [], entries: [], refreshWait: null, refreshFailures: 0, acceptWrites: false};
+    const state = {account: null, calls: [], writes: [], entries: [], refreshWait: null, refreshFailures: 0, acceptWrites: false,
+        invoicingAvailable: true};
     await context.route('**/api/**', async route => {
         const request = route.request();
         const path = new URL(request.url()).pathname;
@@ -34,6 +35,7 @@ async function mock(context) {
             status: 202,
             json: {message: 'Kontrollera din e-post.'}
         });
+        if (path === '/api/subscription') return route.fulfill({json: {invoicingAvailable: state.invoicingAvailable}});
         if (request.method() !== 'GET') {
             state.writes.push({account: state.account, body: request.postData()});
             if (state.acceptWrites && path.startsWith('/api/time-entries/') && request.method() === 'PUT') {
@@ -656,6 +658,20 @@ test('login, reload and week navigation leave every day unselected until explici
     }
 });
 
+
+test('other accounts see coming-soon invoicing without loading billing data', async ({page, context}) => {
+    const state = await mock(context);
+    state.invoicingAvailable = false;
+    await login(page, B, {selectDay: false});
+    await page.getByRole('button', {name: 'Fakturering', exact: true}).click();
+    await expect(page.getByRole('heading', {name: 'Fakturering kommer snart'})).toBeVisible();
+    await expect(page.locator('#invoicing-availability-message')).toContainText('årsskiftet');
+    await expect(page.getByRole('tab', {name: 'Ny faktura'})).toBeHidden();
+    expect(state.calls.filter(call => call.path.startsWith('/api/invoicing/')
+        && call.path !== '/api/invoicing/customer-code-labels')).toHaveLength(0);
+    await page.getByRole('button', {name: 'Tider', exact: true}).click();
+    await expect(page.locator('#time-view')).toBeVisible();
+});
 
 test('top navigation defaults to time, keeps the selected week and opens customer codes through invoicing tabs', async ({ page, context }, testInfo) => {
     const errors = [];

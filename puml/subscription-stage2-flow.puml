@@ -1,0 +1,105 @@
+@startuml
+title Tidrapporten – abonnemang i etapp 2 (Stripes testmiljö)
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #F3F6F0
+  BorderColor #20594A
+  DiamondBackgroundColor #DAE7AA
+  DiamondBorderColor #20594A
+  FontColor #183B35
+}
+
+start
+:Välj scenario;
+note right
+  Köp- och portal-API finns, men webbsidan har ännu ingen planvalsvy.
+  Avbryt på Stripe kan lämna en session OPEN; återförsök kan då få samma URL.
+  En success-URL ger aldrig betalåtkomst. Signerade betalhändelser hör till etapp 3.
+  Stäng inte av OWNER-spärren innan den framtida betalspärren är aktiv.
+end note
+if (Scenario?) then (Nytt köp eller återförsök)
+  :POST /api/subscription/checkout\nplan = MONTHLY eller YEARLY;
+  if (Inloggad och OWNER under förlanseringen?) then (Nej)
+    :403 INVOICING_COMING_SOON;
+    stop
+  endif
+  if (Checkout aktiverad med sk_test_-nyckel?) then (Nej)
+    :503 BILLING_UNAVAILABLE;
+    stop
+  endif
+  :Lås kontoraden i PostgreSQL\noch läs abonnemang och köpförsök;
+  if (Aktivt abonnemang, obekräftat köp\neller betald period?) then (Ja)
+    :409 SUBSCRIPTION_CONFLICT;
+    stop
+  endif
+  if (Pågående försök finns?) then (Ja)
+    if (Samma plan?) then (Nej)
+      :409 – annat köp pågår;
+      stop
+    endif
+    if (Försök OPEN?) then (Ja)
+      :Hämta sessionen från Stripe\noch verifiera kontots Customer-ID;
+      if (Stripe-session OPEN?) then (Ja)
+        :Returnera samma Checkout-URL;
+        stop
+      elseif (Stripe-session COMPLETE?) then (Ja)
+        :Markera COMPLETED;
+        :409 – invänta betalbekräftelse;
+        stop
+      else (EXPIRED)
+        :Markera EXPIRED\noch reservera nytt försök;
+      endif
+    else (CREATING)
+      if (Äldre än 25 timmar?) then (Ja)
+        :Markera EXPIRED\noch reservera nytt försök;
+      else (Nej)
+        :Återanvänd försökets\nidempotensnyckel;
+      endif
+    endif
+  else (Nej)
+    :Reservera CREATING med\nunik idempotensnyckel;
+  endif
+  if (Stripe Customer finns för kontot?) then (Nej)
+    :Skapa testkund med kontobunden\nidempotensnyckel;
+  endif
+  :Välj serverns pris för planen;\nverifiera SEK, testläge och moms;
+  :Skapa Checkout-session hos Stripe\nmed returadresser från PUBLIC_URL;
+  :Spara OPEN, sessions-ID och utgångstid;
+  :Returnera tidsbegränsad Checkout-URL;
+  :Klienten kan öppna Stripes betalningssida;
+  stop
+
+elseif (Stripe-retur) then (Återkomst)
+  if (Returadress?) then (cancelled)
+    :Visa "Köpet avbröts";
+  else (processing)
+    :Visa "Betalningen behandlas";
+  endif
+  :Returadressen ändrar inte abonnemangsstatus;
+  :Vid öppning av Fakturering:\nGET /api/subscription;
+  if (Aktiv OWNER-grant under förlanseringen?) then (Ja)
+    :Öppna faktureringsvyn;
+  else (Nej)
+    :Visa "Fakturering kommer snart";
+  endif
+  stop
+
+else (Kundportal)
+  :POST /api/subscription/portal;
+  if (Inloggad och OWNER under förlanseringen?) then (Nej)
+    :403 INVOICING_COMING_SOON;
+    stop
+  endif
+  if (Testnyckel och portal konfigurerade?) then (Nej)
+    :503 BILLING_UNAVAILABLE;
+    stop
+  endif
+  if (Lagrat Stripe Customer-ID för kontot?) then (Nej)
+    :409 – inget abonnemang att hantera;
+    stop
+  endif
+  :Skapa testportalsession för\nserverns Customer-ID;
+  :Returnera portal-URL;
+  stop
+endif
+@enduml

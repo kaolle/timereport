@@ -70,6 +70,7 @@ async function setup(page, context, {profile = sellerProfile} = {}) {
                 account: {accountId: '44444444-4444-4444-8444-444444444444', email: 'preview@example.test'}
             }
         });
+        if (path === '/api/subscription') return route.fulfill({json: {invoicingAvailable: true}});
         if (path === '/api/invoicing/profile') {
             if (route.request().method() === 'PUT') state.profile = route.request().postDataJSON();
             return route.fulfill(state.profile ? {json: state.profile} : {status: 204});

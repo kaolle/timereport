@@ -364,6 +364,41 @@ grant and its verification/revocation procedure are documented in
 [SUBSCRIPTION_OWNER_ACCESS.md](SUBSCRIPTION_OWNER_ACCESS.md). The remaining steps are in
 [SUBSCRIPTION_IMPLEMENTATION_PLAN.md](SUBSCRIPTION_IMPLEMENTATION_PLAN.md).
 
+During the prelaunch rollout, `SUBSCRIPTION_INVOICING_OWNER_ONLY=true` (the default)
+restricts `/api/invoicing/*` and Stripe Checkout/Portal to accounts with an active
+`OWNER` grant. Other signed-in users see “Fakturering kommer snart” while time entry,
+reports, and customer codes remain available. The read-only customer-code label lookup
+is exempt because time entry uses it. The subscription status response includes
+`invoicingAvailable` for the UI. Verify the owner grant before deploying this setting;
+switch it off only when billing and customer access are ready to launch.
+
+Stage 2 adds test-only Stripe Checkout and Customer Portal endpoints. Set up one Stripe
+test product with two recurring **SEK** prices (monthly and yearly, interval count 1),
+an active test tax rate, and a portal configuration with plan changes disabled. Set
+`STRIPE_SECRET_KEY=sk_test_...`, `STRIPE_PRICE_MONTHLY=price_...`,
+`STRIPE_PRICE_YEARLY=price_...`, `STRIPE_TAX_RATE=txr_...`,
+`STRIPE_PORTAL_CONFIGURATION=bpc_...`, and `SUBSCRIPTION_CHECKOUT_ENABLED=true`.
+The server rejects live keys and validates each selected price and tax rate in Stripe.
+Checkout remains disabled by default. Use a verified account and its access token:
+
+```http
+POST /api/subscription/checkout
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{"plan":"MONTHLY"}
+```
+
+The response has a short-lived `url` for Stripe Checkout. `YEARLY` selects the other
+server-configured price. `POST /api/subscription/portal` returns a portal URL for the
+same account after its Stripe Customer has been created. A second Checkout request
+reuses an open session; pending payment confirmation blocks another purchase. The
+return page says that payment is being processed. **A Checkout return does not grant
+invoicing access**: stage 3 must verify and persist Stripe payment events first.
+These endpoints return `Cache-Control: no-store`; do not store their URLs in browser
+storage or logs. See [Stripe Checkout](https://docs.stripe.com/api/checkout/sessions/create)
+and [Customer Portal](https://docs.stripe.com/api/customer_portal/sessions/create).
+
 ## Authentication
 
 By default, registration is email first: request a verification link, open it, choose

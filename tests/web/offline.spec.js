@@ -18,6 +18,7 @@ async function mockApi(context, entries = [], codes = [code]) {
                 account
             }
         });
+        if (path === '/api/subscription') return route.fulfill({json: {invoicingAvailable: true}});
         if (path === '/api/customer-codes' && request.method() === 'GET') return route.fulfill({json: state.codes});
         if (path === '/api/vacation-days') return route.fulfill({json: []});
         if (path === '/api/time-entries' && request.method() === 'GET') {

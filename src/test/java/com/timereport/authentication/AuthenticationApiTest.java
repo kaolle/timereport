@@ -102,6 +102,100 @@ class AuthenticationApiTest {
     }
 
     @Test
+    void verificationLinkContextShowsOnlyItsEmailWithoutConsumingTheLink() {
+        String email = UUID.randomUUID() + "@example.test";
+        given().header("X-Requested-With", "timereport").contentType("application/json")
+                .body(Map.of("email", email)).post("/api/auth/register").then().statusCode(202);
+        String token = support.mailToken(email, "verify");
+        for (int attempt = 0; attempt < 2; attempt++) {
+            given().header("X-Requested-With", "timereport").contentType("application/json")
+                    .body(Map.of("token", token, "purpose", "verify")).post("/api/auth/link-context")
+                    .then().statusCode(200).header("Cache-Control", "no-store")
+                    .body("email", equalTo(email), "size()", equalTo(1));
+        }
+        given().header("X-Requested-With", "timereport").contentType("application/json")
+                .body(Map.of("token", token, "password", AuthTestSupport.PASSWORD))
+                .post("/api/auth/verify-email").then().statusCode(204);
+        given().header("X-Requested-With", "timereport").contentType("application/json")
+                .body(Map.of("token", token, "purpose", "verify")).post("/api/auth/link-context")
+                .then().statusCode(401).body("email", nullValue());
+        support.login(email, AuthTestSupport.PASSWORD);
+    }
+
+    @Test
+    void resetLinkContextShowsItsEmailWithoutResettingPasswordOrConsumingTheLink() {
+        var login = support.login();
+        given().header("X-Requested-With", "timereport").contentType("application/json")
+                .body(Map.of("email", login.email())).post("/api/auth/forgot-password").then().statusCode(202);
+        String token = support.mailToken(login.email(), "reset");
+        for (int attempt = 0; attempt < 2; attempt++) {
+            given().header("X-Requested-With", "timereport").contentType("application/json")
+                    .body(Map.of("token", token, "purpose", "reset")).post("/api/auth/link-context")
+                    .then().statusCode(200).header("Cache-Control", "no-store")
+                    .body("email", equalTo(login.email()), "size()", equalTo(1));
+        }
+        support.login(login.email(), AuthTestSupport.PASSWORD);
+        given().header("X-Requested-With", "timereport").contentType("application/json")
+                .body(Map.of("token", token, "password", "my replacement password from context 456!"))
+                .post("/api/auth/reset-password").then().statusCode(204);
+        given().header("X-Requested-With", "timereport").contentType("application/json")
+                .body(Map.of("token", token, "purpose", "reset")).post("/api/auth/link-context")
+                .then().statusCode(401).body("email", nullValue());
+    }
+
+    @Test
+    void linkContextRejectsWrongPurposeForgedExpiredAndAlreadyVerifiedLinks() throws Exception {
+        String email = UUID.randomUUID() + "@example.test";
+        given().header("X-Requested-With", "timereport").contentType("application/json")
+                .body(Map.of("email", email)).post("/api/auth/register").then().statusCode(202);
+        String verifyToken = support.mailToken(email, "verify");
+        given().header("X-Requested-With", "timereport").contentType("application/json")
+                .body(Map.of("email", email)).post("/api/auth/forgot-password").then().statusCode(202);
+        String resetToken = support.mailToken(email, "reset");
+        for (var body : java.util.List.of(Map.of("token", verifyToken, "purpose", "reset"),
+                Map.of("token", resetToken, "purpose", "verify"),
+                Map.of("token", "forged-token", "purpose", "verify"))) {
+            given().header("X-Requested-With", "timereport").contentType("application/json")
+                    .body(body).post("/api/auth/link-context").then().statusCode(401)
+                    .header("Cache-Control", "no-store").body("email", nullValue());
+        }
+        try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(
+                "UPDATE accounts SET verified=true WHERE email=?")) {
+            statement.setString(1, email);
+            statement.executeUpdate();
+        }
+        given().header("X-Requested-With", "timereport").contentType("application/json")
+                .body(Map.of("token", verifyToken, "purpose", "verify")).post("/api/auth/link-context")
+                .then().statusCode(401).body("email", nullValue());
+        try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(
+                "UPDATE account_tokens SET expires_at=now()-interval '1 second' "
+                        + "WHERE account_id=(SELECT id FROM accounts WHERE email=?)")) {
+            statement.setString(1, email);
+            statement.executeUpdate();
+        }
+        for (var body : java.util.List.of(Map.of("token", verifyToken, "purpose", "verify"),
+                Map.of("token", resetToken, "purpose", "reset"))) {
+            given().header("X-Requested-With", "timereport").contentType("application/json")
+                    .body(body).post("/api/auth/link-context").then().statusCode(401).body("email", nullValue());
+        }
+    }
+
+    @Test
+    void linkContextRequiresTheAppOriginAndValidRequestFields() {
+        var body = Map.of("token", "some-token", "purpose", "verify");
+        given().contentType("application/json").body(body).post("/api/auth/link-context")
+                .then().statusCode(403);
+        given().header("X-Requested-With", "timereport").header("Origin", "https://evil.example")
+                .contentType("application/json").body(body).post("/api/auth/link-context")
+                .then().statusCode(403);
+        for (var invalid : java.util.List.of(Map.of("token", "some-token", "purpose", "login"),
+                Map.of("token", "", "purpose", "reset"), Map.of("purpose", "verify"))) {
+            given().header("X-Requested-With", "timereport").contentType("application/json")
+                    .body(invalid).post("/api/auth/link-context").then().statusCode(400);
+        }
+    }
+
+    @Test
     void refreshRotatesAndReplayCommitsSessionRevocation() {
         var login = support.login();
         var rotated = given().header("X-Requested-With", "timereport").cookie("timereport_refresh", login.refreshToken())

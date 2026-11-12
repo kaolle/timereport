@@ -9,6 +9,8 @@ public interface Authentication {
 
     void verifyEmail(String token, String password);
 
+    String emailForLink(String token, String purpose);
+
     AuthTokens login(String email, String password);
 
     AuthTokens refresh(String token);

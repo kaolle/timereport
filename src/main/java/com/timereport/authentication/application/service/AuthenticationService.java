@@ -102,7 +102,19 @@ public class AuthenticationService implements Authentication {
         });
     }
 
+    @Override
+    public String emailForLink(String raw, String purpose) {
+        if (!"verify".equals(purpose) && !"reset".equals(purpose)) throw new AuthenticationFailed();
+        return repository.atomic(() -> {
+            var token = validToken(raw, purpose);
+            var account = repository.account(token.accountId()).orElseThrow(AuthenticationFailed::new);
+            if (purpose.equals("verify") && account.verified()) throw new AuthenticationFailed();
+            return account.email();
+        });
+    }
+
     private AccountToken validToken(String raw, String purpose) {
+        if (raw == null || raw.isBlank() || raw.length() > 128) throw new AuthenticationFailed();
         var token = repository.token(tokens.digest(raw)).orElseThrow(AuthenticationFailed::new);
         if (token.consumed() || !purpose.equals(token.purpose()) || !token.expiresAt().isAfter(clock.instant())) {
             throw new AuthenticationFailed();

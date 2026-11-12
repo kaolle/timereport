@@ -72,6 +72,13 @@ public class AuthenticationResource {
     }
 
     @POST
+    @Path("/link-context")
+    public AuthLinkContextResponse linkContext(@NotNull @Valid AuthLinkContextRequest request) {
+        guard(null);
+        return AuthLinkContextResponse.builder().email(auth.emailForLink(request.token(), request.purpose())).build();
+    }
+
+    @POST
     @Path("/verify-email")
     public Response verify(@NotNull @Valid TokenPasswordRequest request) {
         guard(null);

@@ -341,6 +341,61 @@ dialog p { font-size: 14px; color: var(--muted); }
     min-height: 44px;
 }
 
+.password-input {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--white);
+}
+
+.password-input:focus-within {
+    outline: 3px solid #8caa47;
+    outline-offset: 3px;
+}
+
+.password-input :focus-visible { outline: none; }
+
+.field .password-input input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    border-radius: 10px 0 0 10px;
+}
+
+.password-toggle {
+    display: grid;
+    place-items: center;
+    flex: 0 0 46px;
+    min-height: 44px;
+    margin: 1px;
+    padding: 0;
+    color: var(--green);
+    background: transparent;
+}
+
+.password-toggle svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.password-toggle:focus-visible { background: #edf0e7; }
+
+.auth-complete-login {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    border-radius: 10px;
+    text-decoration: none;
+}
+
 .account-tools {
     margin-top: 1rem;
 }

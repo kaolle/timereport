@@ -5,7 +5,8 @@ const B = {accountId: '22222222-2222-4222-8222-222222222222', email: 'b@example.
 
 async function mock(context) {
     const state = {account: null, calls: [], writes: [], entries: [], refreshWait: null, refreshFailures: 0, acceptWrites: false,
-        invoicingAvailable: true, sandboxCheckoutAvailable: false};
+        invoicingAvailable: true, sandboxCheckoutAvailable: false, linkEmail: A.email,
+        linkContextFailures: 0, linkContextStatus: 200};
     await context.route('**/api/**', async route => {
         const request = route.request();
         const path = new URL(request.url()).pathname;
@@ -30,6 +31,10 @@ async function mock(context) {
         if (path === '/api/auth/logout') {
             state.account = null;
             return route.fulfill({status: 204});
+        }
+        if (path === '/api/auth/link-context') {
+            const status = state.linkContextFailures-- > 0 ? 503 : state.linkContextStatus;
+            return route.fulfill({status, json: status === 200 ? {email: state.linkEmail} : {message: 'Ogiltig länk.'}});
         }
         if (path.startsWith('/api/auth/')) return route.fulfill({
             status: 202,
@@ -350,15 +355,26 @@ test('session expiry never discards queued edits and logout hides local data', a
 
 test('reset link token is removed from URL and sent only in a POST body', async ({page, context}) => {
     const state = await mock(context);
+    state.account = A;
+    state.linkEmail = B.email;
+    await page.addInitScript(account => localStorage.setItem('timereport-account', JSON.stringify(account)), A);
     await page.goto('/#reset=secret-reset-token');
     await expect(page.locator('#auth-mode')).toHaveValue('reset-password');
     expect(new URL(page.url()).hash).toBe('');
     await page.locator('#auth-password').fill('a new sufficiently long password');
     await page.locator('#auth-submit').click();
-    await expect(page.locator('#auth-mode')).toHaveValue('login');
+    await expect(page.locator('#auth-status')).toContainText('Lösenordet är ändrat');
+    await expect(page.locator('#auth-form')).toHaveCount(0);
+    await expect(page.getByRole('link', {name: 'Fortsätt till inloggning'})).toBeFocused();
     const reset = state.calls.find(call => call.path === '/api/auth/reset-password');
     expect(JSON.parse(reset.body).token).toBe('secret-reset-token');
     expect(await page.evaluate(() => JSON.stringify({...localStorage}))).not.toContain('secret-reset-token');
+    expect(state.calls.find(call => call.path === '/api/auth/link-context')?.body)
+        .toBe(JSON.stringify({token: 'secret-reset-token', purpose: 'reset'}));
+    await page.getByRole('link', {name: 'Fortsätt till inloggning'}).click();
+    await expect(page.locator('#auth-mode')).toHaveValue('login');
+    await expect(page.locator('#auth-email')).toHaveValue(B.email);
+    await expect(page.locator('#auth-password')).toHaveValue('');
 });
 
 
@@ -377,19 +393,103 @@ test('registration requests email only and verification lets the owner choose a 
     page = await context.newPage();
     await page.goto('/#verify=secret-verification-token');
     await expect(page.locator('#auth-mode')).toHaveValue('verify-email');
-    await expect(page.locator('#auth-email')).toBeHidden();
+    await expect(page.locator('#auth-email')).toBeVisible();
+    await expect(page.locator('#auth-email')).toHaveValue(A.email);
+    await expect(page.locator('#auth-email')).toHaveAttribute('readonly', '');
     await expect(page.getByLabel('Välj nytt lösenord')).toBeVisible();
     await expect(page.locator('#auth-password')).toHaveAttribute('autocomplete', 'new-password');
     expect(new URL(page.url()).hash).toBe('');
     await page.locator('#auth-password').fill('my newly chosen password 123!');
     await page.locator('#auth-submit').click();
-    await expect(page.locator('#auth-mode')).toHaveValue('login');
+    await expect(page.locator('#auth-status')).toContainText('Kontot är aktiverat');
+    await expect(page.locator('#auth-form')).toHaveCount(0);
     const verification = state.calls.find(call => call.path === '/api/auth/verify-email');
     expect(JSON.parse(verification.body)).toEqual({
         token: 'secret-verification-token',
         password: 'my newly chosen password 123!'
     });
-    expect(await page.locator('#auth-password').inputValue()).toBe('');
+    await page.getByRole('link', {name: 'Fortsätt till inloggning'}).click();
+    await expect(page.locator('#auth-password')).toHaveValue('');
+    await expect(page.locator('#auth-email')).toHaveValue(A.email);
+});
+
+for (const purpose of ['verify', 'reset']) {
+    test(`${purpose} shows the link account and supports revealing the same new-password field`, async ({page, context}, testInfo) => {
+        const state = await mock(context);
+        state.account = A;
+        state.linkEmail = B.email;
+        await page.addInitScript(account => localStorage.setItem('timereport-account', JSON.stringify(account)), A);
+        await page.goto(`/#${purpose}=secret-link-token`);
+        const email = page.locator('#auth-email');
+        const password = page.locator('#auth-password');
+        const toggle = page.locator('[aria-controls="auth-password"]');
+        await expect(email).toHaveValue(B.email);
+        await expect(email).toBeVisible();
+        await expect(email).toBeEnabled();
+        await expect(email).toHaveAttribute('readonly', '');
+        await expect(email).toHaveAttribute('autocomplete', 'username');
+        await expect(email).toHaveAttribute('name', 'username');
+        await expect(password).toHaveAttribute('autocomplete', 'new-password');
+        await expect(password).toHaveAttribute('name', 'password');
+        await password.fill('my new password for account B 123!');
+        await toggle.tap();
+        await expect(password).toHaveAttribute('type', 'text');
+        await expect(password).toBeFocused();
+        await expect(toggle).toHaveAccessibleName('Dölj lösenord');
+        await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        await expect(password).toHaveValue('my new password for account B 123!');
+        await expect(password).toHaveAttribute('autocomplete', 'new-password');
+        expect(state.calls.some(call => ['/api/auth/verify-email', '/api/auth/reset-password'].includes(call.path))).toBe(false);
+        await toggle.tap();
+        await expect(password).toHaveAttribute('type', 'password');
+        await expect(toggle).toHaveAccessibleName('Visa lösenord');
+        expect((await toggle.boundingBox()).width).toBeGreaterThanOrEqual(44);
+        const inputBox = await password.boundingBox();
+        const toggleBox = await toggle.boundingBox();
+        expect(toggleBox.x).toBeGreaterThanOrEqual(inputBox.x + inputBox.width - 1);
+        if (purpose === 'verify') await page.screenshot({path: testInfo.outputPath('verify-password-mobile.png'), fullPage: true});
+        const storage = await page.evaluate(() => JSON.stringify({...localStorage}) + JSON.stringify({...sessionStorage}));
+        expect(storage).not.toContain('my new password');
+        expect(storage).not.toContain('secret-link-token');
+        expect(JSON.parse(await page.evaluate(() => localStorage.getItem('timereport-account')))).toEqual(A);
+        await toggle.tap();
+        await expect(password).toHaveAttribute('type', 'text');
+        await page.locator('#auth-mode').selectOption('login');
+        await expect(email).toBeEditable();
+        await expect(password).toHaveAttribute('type', 'password');
+        await expect(password).toHaveAttribute('autocomplete', 'current-password');
+    });
+}
+
+test('unavailable link context keeps password submission blocked and can be retried', async ({page, context}) => {
+    const state = await mock(context);
+    state.linkContextFailures = 1;
+    state.linkEmail = B.email;
+    await page.goto('/#reset=secret-link-token');
+    await expect(page.locator('#auth-status')).toContainText('Länken kunde inte kontrolleras');
+    await expect(page.locator('#auth-email')).toHaveValue('');
+    await expect(page.locator('#auth-password')).toBeDisabled();
+    await expect(page.locator('#auth-submit')).toBeDisabled();
+    await page.locator('#auth-link-retry').click();
+    await expect(page.locator('#auth-email')).toHaveValue(B.email);
+    await expect(page.locator('#auth-password')).toBeEnabled();
+    await expect(page.locator('#auth-submit')).toBeEnabled();
+    expect(state.calls.filter(call => call.path === '/api/auth/link-context')).toHaveLength(2);
+    expect(state.calls.some(call => call.path === '/api/auth/reset-password')).toBe(false);
+});
+
+test('invalid links do not expose a remembered username or permit password submission', async ({page, context}) => {
+    const state = await mock(context);
+    state.linkContextStatus = 401;
+    await page.addInitScript(account => localStorage.setItem('timereport-account', JSON.stringify(account)), A);
+    await page.goto('/#verify=invalid-link-token');
+    await expect(page.locator('#auth-status')).toContainText('Länken är ogiltig eller har gått ut');
+    await expect(page.locator('#auth-email')).toHaveValue('');
+    await expect(page.locator('#auth-submit')).toBeDisabled();
+    await expect(page.locator('#auth-link-retry')).toBeHidden();
+    await page.locator('#auth-mode').selectOption('register');
+    await expect(page.locator('#auth-email')).toBeEditable();
+    await expect(page.locator('#auth-submit')).toBeEnabled();
 });
 
 

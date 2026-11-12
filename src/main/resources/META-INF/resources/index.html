@@ -28,7 +28,7 @@
     </header>
     <section id="auth-panel" class="panel auth-panel" aria-labelledby="auth-title">
         <h1 id="auth-title">Ditt konto i Tidrapporten</h1>
-        <form id="auth-form">
+        <form id="auth-form" method="post" autocomplete="on">
             <div class="field"><label for="auth-mode">Välj åtgärd</label><select id="auth-mode" disabled>
                 <option value="login">Logga in</option>
                 <option value="register">Skapa konto</option>
@@ -36,16 +36,27 @@
                 <option value="verify-email">Bekräfta konto via mejllänk</option>
                 <option value="reset-password">Återställ via mejllänk</option>
             </select></div>
-            <div class="field"><label for="auth-email">E-postadress</label><input id="auth-email" type="email"
+            <div class="field"><label for="auth-email">E-postadress</label><input id="auth-email" name="username" type="email"
                                                                                   autocomplete="username"
+                                                                                  autocapitalize="none" spellcheck="false"
                                                                                   maxlength="254" required disabled></div>
-            <div class="field"><label for="auth-password">Lösenord</label><input id="auth-password" type="password"
-                                                                                 autocomplete="current-password"
-                                                                                 maxlength="128" required disabled>
-                <p class="field-help">Nya lösenord ska ha minst 15 tecken.</p></div>
+            <div class="field"><label for="auth-password">Lösenord</label>
+                <div class="password-input">
+                    <input id="auth-password" name="password" type="password" autocomplete="current-password"
+                           autocapitalize="none" spellcheck="false" aria-describedby="auth-password-help"
+                           maxlength="128" required disabled>
+                    <button type="button" class="password-toggle" data-password-toggle aria-controls="auth-password"
+                            aria-label="Visa lösenord" aria-pressed="false" title="Visa lösenord" disabled>
+                        <svg data-password-show viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <svg data-password-hide viewBox="0 0 24 24" aria-hidden="true" hidden><path d="m3 3 18 18M10.6 5.1 12 5c6.5 0 10 7 10 7a22 22 0 0 1-3.1 4.1M6.1 6.1A23 23 0 0 0 2 12s3.5 7 10 7a12 12 0 0 0 5.9-1.9M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+                    </button>
+                </div>
+                <p id="auth-password-help" class="field-help">Nya lösenord ska ha minst 15 tecken.</p></div>
             <button id="auth-submit" class="primary-button" type="submit" disabled>Logga in</button>
-            <p id="auth-status" role="status">Förbereder inloggning…</p>
         </form>
+        <p id="auth-status" role="status">Förbereder inloggning…</p>
+        <button id="auth-link-retry" type="button" class="secondary-button" hidden>Försök igen</button>
+        <a id="auth-complete-login" class="primary-button auth-complete-login" href="/?login=1" hidden>Fortsätt till inloggning</a>
         <button id="auth-offline" class="text-button" type="button" hidden>Fortsätt med mina lokala tider</button>
         <p class="field-help">Offlineuppgifter sparas separat per konto på den här enheten.</p>
     </section>
@@ -155,14 +166,23 @@
             <details>
                 <summary>Ändra lösenord</summary>
                 <form id="change-password-form">
-                    <div class="field"><label for="current-password">Nuvarande lösenord</label><input
-                            id="current-password" type="password" autocomplete="current-password" maxlength="128"
-                            required></div>
-                    <div class="field"><label for="new-password">Nytt lösenord</label><input id="new-password"
-                                                                                             type="password"
-                                                                                             autocomplete="new-password"
-                                                                                             minlength="15"
-                                                                                             maxlength="128" required>
+                    <div class="field"><label for="current-password">Nuvarande lösenord</label>
+                        <div class="password-input">
+                            <input id="current-password" name="current-password" type="password" autocomplete="current-password" maxlength="128" required>
+                            <button type="button" class="password-toggle" data-password-toggle aria-controls="current-password" aria-label="Visa lösenord" aria-pressed="false" title="Visa lösenord">
+                                <svg data-password-show viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                <svg data-password-hide viewBox="0 0 24 24" aria-hidden="true" hidden><path d="m3 3 18 18M10.6 5.1 12 5c6.5 0 10 7 10 7a22 22 0 0 1-3.1 4.1M6.1 6.1A23 23 0 0 0 2 12s3.5 7 10 7a12 12 0 0 0 5.9-1.9M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="field"><label for="new-password">Nytt lösenord</label>
+                        <div class="password-input">
+                            <input id="new-password" name="new-password" type="password" autocomplete="new-password" minlength="15" maxlength="128" required>
+                            <button type="button" class="password-toggle" data-password-toggle aria-controls="new-password" aria-label="Visa lösenord" aria-pressed="false" title="Visa lösenord">
+                                <svg data-password-show viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                <svg data-password-hide viewBox="0 0 24 24" aria-hidden="true" hidden><path d="m3 3 18 18M10.6 5.1 12 5c6.5 0 10 7 10 7a22 22 0 0 1-3.1 4.1M6.1 6.1A23 23 0 0 0 2 12s3.5 7 10 7a12 12 0 0 0 5.9-1.9M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+                            </button>
+                        </div>
                     </div>
                     <button type="submit" class="primary-button">Ändra lösenord och logga ut</button>
                     <p id="password-status" role="status"></p>

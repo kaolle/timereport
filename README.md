@@ -436,6 +436,22 @@ proof of email ownership and should be turned back on after setup. Requesting an
 verification link invalidates the previous link; registering an already activated
 address does not change its password.
 
+Verification and password-reset forms display the email address bound to the
+validated link as a read-only username. `POST /api/auth/link-context` accepts
+`{ "token": "...", "purpose": "verify" }` (or `"reset"`) and returns only the email;
+it does not consume the link and its response is never cached. Invalid, expired,
+consumed or wrong-purpose links cannot reveal the address. The token remains in
+memory and is sent only in POST bodies, including the context lookup.
+
+Credential inputs use stable names and `autocomplete="username"`, `new-password`
+or `current-password`. The eye button reveals the same password input without
+submitting the form. After successful verification/reset, the completed form is
+removed before its password is cleared; a success message links to a fresh login
+with the email prefilled from a one-use session-storage hint. Passwords and link
+tokens are never put in browser storage. This supports browser password managers;
+confirm the save/update prompt on a real iPhone with Password AutoFill enabled,
+since the browser controls that prompt.
+
 Access tokens are RS256 JWTs valid for **5 minutes**, kept only in JavaScript memory.
 The opaque refresh token is stored in an **HttpOnly, SameSite=Strict** cookie scoped
 to `/api/auth`, with `Secure` enabled in production. Sessions last **30 days from

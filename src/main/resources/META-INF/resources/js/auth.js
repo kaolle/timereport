@@ -1,4 +1,7 @@
+import {configurePasswordVisibility} from './password-visibility.js';
+
 const ACCOUNT_KEY = 'timereport-account';
+const LOGIN_EMAIL_KEY = 'timereport-login-email';
 let account;
 let accessToken;
 let expiresAt = 0;
@@ -124,6 +127,10 @@ export async function requireAccount() {
     const mode = document.getElementById('auth-mode');
     const email = document.getElementById('auth-email');
     const password = document.getElementById('auth-password');
+    const submit = document.getElementById('auth-submit');
+    const retryLink = document.getElementById('auth-link-retry');
+    const completeLogin = document.getElementById('auth-complete-login');
+    const passwordVisibility = configurePasswordVisibility();
     const local = rememberedAccount();
     const url = new URL(location.href);
     const forceLogin = url.searchParams.get('login') === '1';
@@ -133,32 +140,93 @@ export async function requireAccount() {
     }
     let emailVerificationRequired = true;
     let linkToken;
+    let linkMode;
+    let linkEmail;
+    let linkContextPending = false;
+    let linkContextError;
+    let initialized = false;
+    let submitting = false;
+    let completed = false;
     const fragment = new URLSearchParams(location.hash.slice(1));
     if (fragment.has('reset') || fragment.has('verify')) {
         mode.value = fragment.has('reset') ? 'reset-password' : 'verify-email';
+        linkMode = mode.value;
         linkToken = fragment.get('reset') || fragment.get('verify');
         history.replaceState(null, '', location.pathname + location.search);
     }
 
+    email.value = local?.email || '';
+    try {
+        const suggestedEmail = sessionStorage.getItem(LOGIN_EMAIL_KEY);
+        sessionStorage.removeItem(LOGIN_EMAIL_KEY);
+        if (suggestedEmail) email.value = suggestedEmail;
+    } catch { /* The visible username remains usable when browser storage is unavailable. */ }
+
     function fields() {
+        if (completed) return;
         const tokenMode = ['verify-email', 'reset-password'].includes(mode.value);
-        email.closest('.field').hidden = tokenMode;
-        email.required = !tokenMode;
+        const linkReady = linkToken && mode.value === linkMode && linkEmail;
+        email.closest('.field').hidden = false;
+        email.required = true;
+        email.readOnly = tokenMode || submitting;
+        email.disabled = !initialized;
+        if (tokenMode) email.value = linkReady ? linkEmail : '';
         const directRegistration = mode.value === 'register' && !emailVerificationRequired;
         const needsPassword = directRegistration || !['register', 'forgot-password'].includes(mode.value);
         password.closest('.field').hidden = !needsPassword;
         password.required = needsPassword;
+        password.disabled = !initialized || tokenMode && !linkReady;
+        password.readOnly = submitting;
         password.autocomplete = tokenMode || directRegistration ? 'new-password' : 'current-password';
         password.minLength = tokenMode || directRegistration ? 15 : 0;
         document.querySelector('label[for="auth-password"]').textContent = tokenMode ? 'Välj nytt lösenord' : 'Lösenord';
-        document.getElementById('auth-submit').textContent = ({
+        submit.textContent = ({
             login: 'Logga in', register: directRegistration ? 'Skapa konto' : 'Skicka registreringslänk',
             'forgot-password': 'Skicka återställningslänk', 'reset-password': 'Spara nytt lösenord',
             'verify-email': 'Spara lösenord och aktivera konto'
         })[mode.value];
+        submit.disabled = !initialized || submitting || tokenMode && !linkReady;
+        mode.disabled = !initialized || submitting;
+        retryLink.hidden = !tokenMode || mode.value !== linkMode || !linkContextError?.retryable;
+        passwordVisibility.refresh();
     }
 
-    mode.addEventListener('change', fields);
+    async function loadLinkContext() {
+        if (!linkToken || linkContextPending || completed) return;
+        linkContextPending = true;
+        linkContextError = undefined;
+        retryLink.hidden = true;
+        if (mode.value === linkMode) status.textContent = 'Kontrollerar länken …';
+        try {
+            const result = await authRequest('link-context', {
+                token: linkToken, purpose: linkMode === 'verify-email' ? 'verify' : 'reset'
+            });
+            if (!result?.email || typeof result.email !== 'string') throw new Error();
+            linkEmail = result.email;
+        } catch (error) {
+            const invalid = [400, 401, 403].includes(error.status);
+            linkContextError = {
+                message: invalid ? 'Länken är ogiltig eller har gått ut. Begär en ny länk.'
+                    : 'Länken kunde inte kontrolleras. Anslut till nätet och försök igen.',
+                retryable: !invalid
+            };
+        } finally {
+            linkContextPending = false;
+            if (!completed) {
+                fields();
+                if (mode.value === linkMode) status.textContent = linkContextError?.message || '';
+            }
+        }
+    }
+
+    mode.addEventListener('change', () => {
+        passwordVisibility.hideAll();
+        fields();
+        const tokenMode = ['verify-email', 'reset-password'].includes(mode.value);
+        status.textContent = tokenMode ? mode.value !== linkMode ? 'Öppna länken från mejlet för att fortsätta.'
+            : linkContextPending ? 'Kontrollerar länken …' : linkContextError?.message || '' : '';
+    });
+    retryLink.addEventListener('click', () => void loadLinkContext());
     fields();
     if (navigator.onLine) {
         // Registration settings must not block session recovery or access to local data.
@@ -198,7 +266,6 @@ export async function requireAccount() {
     }
     panel.hidden = false;
     main.hidden = true;
-    email.value = local?.email || '';
     const offline = document.getElementById('auth-offline');
     offline.hidden = !local || Boolean(linkToken);
     return new Promise(resolve => {
@@ -210,8 +277,14 @@ export async function requireAccount() {
         }, {once: true});
         form.addEventListener('submit', async event => {
             event.preventDefault();
-            const button = document.getElementById('auth-submit');
-            button.disabled = true;
+            if (submitting || completed) return;
+            const tokenMode = ['verify-email', 'reset-password'].includes(mode.value);
+            if (tokenMode && (!linkToken || mode.value !== linkMode || !linkEmail)) {
+                status.textContent = 'Öppna en giltig länk från mejlet för att fortsätta.';
+                return;
+            }
+            submitting = true;
+            fields();
             status.textContent = '';
             try {
                 const body = ['verify-email', 'reset-password'].includes(mode.value)
@@ -235,25 +308,40 @@ export async function requireAccount() {
                     resolve(account);
                     return;
                 }
-                status.textContent = result?.message || 'Klart. Du kan nu logga in.';
-                password.value = '';
-                if (['verify-email', 'reset-password'].includes(mode.value)) {
-                    mode.value = 'login';
+                if (tokenMode) {
+                    // Remove the completed form before clearing its fields so
+                    // password managers can recognize the successful submission.
+                    completed = true;
+                    form.remove();
+                    password.value = '';
                     linkToken = undefined;
-                    fields();
+                    try { sessionStorage.setItem(LOGIN_EMAIL_KEY, linkEmail); } catch { /* Email hint only. */ }
+                    const loginUrl = new URL(location.href);
+                    loginUrl.searchParams.set('login', '1');
+                    const target = loginUrl.pathname + loginUrl.search;
+                    history.replaceState(null, '', target);
+                    completeLogin.href = target;
+                    completeLogin.hidden = false;
+                    status.textContent = mode.value === 'verify-email'
+                        ? 'Kontot är aktiverat. Du kan nu logga in.' : 'Lösenordet är ändrat. Du kan nu logga in.';
+                    completeLogin.focus();
+                } else {
+                    status.textContent = result?.message || 'Klart. Du kan nu logga in.';
+                    password.value = '';
                 }
             } catch (error) {
                 status.textContent = error.message || 'Servern kan inte nås.';
             } finally {
-                button.disabled = false;
+                submitting = false;
+                fields();
             }
         });
         // Visible HTML may arrive before the module graph. Enable interaction only
         // after initialization has set defaults and installed the submit handler.
         status.textContent = '';
-        for (const control of [mode, email, password, document.getElementById('auth-submit')]) {
-            control.disabled = false;
-        }
+        initialized = true;
+        fields();
+        if (linkToken) void loadLinkContext();
     });
 }
 

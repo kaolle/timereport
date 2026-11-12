@@ -32,14 +32,15 @@ public class SubscriptionPurchaseService implements SubscriptionPurchases {
         Objects.requireNonNull(plan, "plan is required");
         billing.requireCheckoutConfigured();
         var attempt = repository.reserve(accountId, plan, clock.instant());
-        if (attempt.plan() != plan)
-            throw new SubscriptionPurchaseConflict("Ett annat köp pågår redan för kontot.");
         if (attempt.state() == CheckoutAttempt.State.OPEN) {
             var existing = billing.retrieveCheckout(attempt.stripeSessionId());
             if (!existing.customerId().equals(repository.customerId(accountId).orElse(null)))
                 throw new SubscriptionBillingUnavailable("Köpets kundkoppling kunde inte verifieras.");
-            if (existing.state() == HostedCheckout.State.OPEN)
+            if (existing.state() == HostedCheckout.State.OPEN) {
+                if (attempt.plan() != plan)
+                    throw new SubscriptionPurchaseConflict("Ett annat köp pågår redan för kontot.");
                 return existing;
+            }
             if (existing.state() == HostedCheckout.State.COMPLETE) {
                 repository.complete(attempt.id());
                 throw new SubscriptionPurchaseConflict("Betalningen behandlas. Vänta på bekräftelse innan du försöker igen.");
@@ -47,6 +48,8 @@ public class SubscriptionPurchaseService implements SubscriptionPurchases {
             repository.expire(attempt.id());
             attempt = repository.reserve(accountId, plan, clock.instant());
         }
+        if (attempt.plan() != plan)
+            throw new SubscriptionPurchaseConflict("Ett annat köp pågår redan för kontot.");
         if (attempt.state() != CheckoutAttempt.State.CREATING)
             throw new SubscriptionPurchaseConflict("Ett annat köp pågår redan för kontot.");
         var customer = repository.customerId(accountId).orElseGet(() ->

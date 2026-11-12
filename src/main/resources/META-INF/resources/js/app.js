@@ -5,6 +5,7 @@ import {configureMonthlyReport} from './report.js';
 import {configureAppShell, configureNavigation, prepareOffline} from './app-shell.js';
 import {configureInvoicingSettings} from './invoicing-settings.js';
 import {configureInvoicingAccess} from './invoicing-access.js';
+import {configureSandboxSubscription} from './sandbox-subscription.js';
 import {configureAccountTools, logout, requireAccount} from './auth.js';
 import {configureCommentSuggestions} from './comment-suggestions.js';
 import {formatMinutes, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
@@ -53,6 +54,7 @@ const changes = 'BroadcastChannel' in window ? new BroadcastChannel(`timereport-
 const monthlyReport = configureMonthlyReport({onCache: reloadLocal});
 const invoicingSettings = configureInvoicingSettings();
 const invoicingAccess = configureInvoicingAccess(() => invoicingSettings.refreshIfOpen());
+const sandboxSubscription = configureSandboxSubscription();
 
 const synchronization = configureSynchronization({
     isReady: () => ready,
@@ -95,6 +97,7 @@ const {renderCodes, refreshCodes, refreshBillingLabels} = customerCodes;
 configureNavigation(view => {
     if (view === 'report') void monthlyReport.refreshIfOpen();
     if (view === 'invoicing') void invoicingAccess.refreshIfOpen();
+    if (view === 'account') void sandboxSubscription.refreshIfOpen();
 });
 
 function message(id, text) {

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.UUID;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
@@ -28,7 +29,8 @@ class InvoicingRolloutFilterTest {
         when(identity.accountId()).thenReturn(accountId);
         when(subscriptions.status(accountId)).thenReturn(snapshot(false));
         when(request.getUriInfo()).thenReturn(uri);
-        var filter = new InvoicingRolloutFilter(identity, subscriptions, new InvoicingRollout(true));
+        var filter = new InvoicingRolloutFilter(identity, subscriptions,
+                new InvoicingRollout(true, false, Optional.empty()));
 
         when(uri.getPath()).thenReturn("/api/invoicing/profile");
         filter.filter(request);
@@ -53,8 +55,25 @@ class InvoicingRolloutFilterTest {
         when(subscriptions.status(accountId)).thenReturn(snapshot(true));
         when(request.getUriInfo()).thenReturn(uri);
         when(uri.getPath()).thenReturn("api/invoicing/draft/pdf");
-        new InvoicingRolloutFilter(identity, subscriptions, new InvoicingRollout(true)).filter(request);
+        new InvoicingRolloutFilter(identity, subscriptions,
+                new InvoicingRollout(true, false, Optional.empty())).filter(request);
         verify(request, never()).abortWith(any());
+    }
+
+    @Test
+    void sandboxBuyerCanStartCheckoutButCannotUseInvoicing() {
+        when(identity.accountId()).thenReturn(accountId);
+        when(subscriptions.status(accountId)).thenReturn(snapshot(false));
+        when(request.getUriInfo()).thenReturn(uri);
+        when(uri.getPath()).thenReturn("api/invoicing/invoices");
+        var rollout = new InvoicingRollout(true, true, Optional.of(accountId.toString()));
+
+        assertEquals(true, rollout.canStartSandboxCheckout(snapshot(false)));
+        assertEquals(false, rollout.availableTo(snapshot(false)));
+        assertEquals(false, rollout.canAccessSandboxBilling(SubscriptionSnapshot.builder()
+                .accountId(UUID.randomUUID()).state(SubscriptionState.NONE).build()));
+        new InvoicingRolloutFilter(identity, subscriptions, rollout).filter(request);
+        verify(request).abortWith(any());
     }
 
     private SubscriptionSnapshot snapshot(boolean owner) {

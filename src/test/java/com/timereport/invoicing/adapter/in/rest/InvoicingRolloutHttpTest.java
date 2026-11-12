@@ -32,7 +32,7 @@ class InvoicingRolloutHttpTest {
     void nonOwnerCanRegisterTimeButCannotAccessInvoicing() {
         var login = auth.login();
         given().auth().oauth2(login.accessToken()).get("/api/subscription").then().statusCode(200)
-                .body("invoicingAvailable", equalTo(false));
+                .body("invoicingAvailable", equalTo(false), "sandboxCheckoutAvailable", equalTo(false));
         given().auth().oauth2(login.accessToken()).get("/api/invoicing/profile").then().statusCode(403)
                 .body("code", equalTo("INVOICING_COMING_SOON"));
         given().auth().oauth2(login.accessToken()).get("/api/invoicing/invoices").then().statusCode(403);

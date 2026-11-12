@@ -345,6 +345,16 @@ dialog p { font-size: 14px; color: var(--muted); }
     margin-top: 1rem;
 }
 
+.subscription-sandbox {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    border: 1px solid #c9d9cc;
+    border-radius: 12px;
+    background: #f3f6f0;
+}
+
+.subscription-sandbox h3 { margin-top: 0; }
+
 .customer-code-controls {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 115px;

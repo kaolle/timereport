@@ -5,7 +5,7 @@ const B = {accountId: '22222222-2222-4222-8222-222222222222', email: 'b@example.
 
 async function mock(context) {
     const state = {account: null, calls: [], writes: [], entries: [], refreshWait: null, refreshFailures: 0, acceptWrites: false,
-        invoicingAvailable: true};
+        invoicingAvailable: true, sandboxCheckoutAvailable: false};
     await context.route('**/api/**', async route => {
         const request = route.request();
         const path = new URL(request.url()).pathname;
@@ -35,7 +35,10 @@ async function mock(context) {
             status: 202,
             json: {message: 'Kontrollera din e-post.'}
         });
-        if (path === '/api/subscription') return route.fulfill({json: {invoicingAvailable: state.invoicingAvailable}});
+        if (path === '/api/subscription') return route.fulfill({json: {
+            invoicingAvailable: state.invoicingAvailable,
+            sandboxCheckoutAvailable: state.sandboxCheckoutAvailable
+        }});
         if (request.method() !== 'GET') {
             state.writes.push({account: state.account, body: request.postData()});
             if (state.acceptWrites && path.startsWith('/api/time-entries/') && request.method() === 'PUT') {
@@ -87,6 +90,53 @@ async function seedPending(page, comment = 'Private offline entry') {
 }
 
 const snapshot = page => page.evaluate(async () => (await import('/js/storage.js')).snapshot());
+
+test('a sandbox buyer can start monthly checkout from Konto while invoicing stays locked', async ({page, context}) => {
+    const state = await mock(context);
+    state.invoicingAvailable = false;
+    state.sandboxCheckoutAvailable = true;
+    await login(page, A, {selectDay: false});
+    await page.getByRole('button', {name: 'Konto', exact: true}).click();
+    await expect(page.locator('#subscription-sandbox')).toBeVisible();
+    await page.locator('#subscription-buy-monthly').click();
+    await expect(page.locator('#subscription-sandbox-status')).toContainText('Köpet kunde inte startas');
+    expect(state.calls.find(call => call.path === '/api/subscription/checkout')?.body).toBe('{"plan":"MONTHLY"}');
+    await page.getByRole('button', {name: 'Fakturering', exact: true}).click();
+    await expect(page.locator('#invoicing-coming-soon')).toBeVisible();
+    await expect(page.locator('#invoicing-view')).toHaveClass(/invoicing-restricted/);
+});
+
+test('yearly checkout releases purchase controls before leaving so browser Back can retry', async ({page, context}) => {
+    const state = await mock(context);
+    state.sandboxCheckoutAvailable = true;
+    const checkoutUrl = 'https://checkout.stripe.com/c/pay/test-yearly';
+    let selectedPlan;
+    await context.route('**/api/subscription/checkout', route => {
+        selectedPlan = route.request().postDataJSON().plan;
+        return route.fulfill({json: {url: checkoutUrl}});
+    });
+    await context.route('https://checkout.stripe.com/**', route =>
+        route.fulfill({contentType: 'text/html', body: '<h1>Stripe test checkout</h1>'}));
+    await login(page, A, {selectDay: false});
+    await page.getByRole('button', {name: 'Konto', exact: true}).click();
+    await expect(page.locator('#subscription-sandbox')).toBeVisible();
+    // Record the outgoing state before the browser could freeze it in BFCache.
+    await page.evaluate(() => window.addEventListener('pagehide', () => {
+        sessionStorage.setItem('sandbox-controls-on-leave', JSON.stringify([
+            document.getElementById('subscription-buy-monthly').disabled,
+            document.getElementById('subscription-buy-yearly').disabled
+        ]));
+    }, {once: true}));
+    await page.locator('#subscription-buy-yearly').click();
+    await expect(page).toHaveURL(checkoutUrl);
+    expect(selectedPlan).toBe('YEARLY');
+    await page.goBack();
+    await expect(page.locator('#main')).toBeVisible();
+    expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('sandbox-controls-on-leave'))))
+        .toEqual([false, false]);
+    await page.getByRole('button', {name: 'Konto', exact: true}).click();
+    await expect(page.locator('#subscription-buy-yearly')).toBeEnabled();
+});
 
 test('login uses memory-only access tokens and refresh never sends a bearer token', async ({page, context}) => {
     const state = await mock(context);

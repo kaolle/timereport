@@ -372,6 +372,14 @@ is exempt because time entry uses it. The subscription status response includes
 `invoicingAvailable` for the UI. Verify the owner grant before deploying this setting;
 switch it off only when billing and customer access are ready to launch.
 
+To test a purchase with a separate, verified account while this rollout is active,
+look up its UUID with `SELECT id FROM accounts WHERE email = 'test@example.com';`
+and set `SUBSCRIPTION_SANDBOX_BUYER_ACCOUNT_IDS` to that UUID (comma-separated for
+more than one). Leave the variable unset otherwise. This permits only those accounts
+to use Stripe test Checkout and Portal; it does **not** unlock invoicing. When sandbox
+Checkout is enabled, the test account sees “Testa abonnemang” under **Konto**.
+Its status response exposes `sandboxCheckoutAvailable` for this control.
+
 Stage 2 adds test-only Stripe Checkout and Customer Portal endpoints. Set up one Stripe
 test product with two recurring **SEK** prices (monthly and yearly, interval count 1),
 an active test tax rate, and a portal configuration with plan changes disabled. Set
@@ -395,9 +403,27 @@ same account after its Stripe Customer has been created. A second Checkout reque
 reuses an open session; pending payment confirmation blocks another purchase. The
 return page says that payment is being processed. **A Checkout return does not grant
 invoicing access**: stage 3 must verify and persist Stripe payment events first.
+Automatic monthly renewal and a new purchase after an unpaid period cannot yet be
+tested end to end; those transitions require stage 3's webhook processing. An open
+Checkout session can already be retried safely. Use Stripe's sandbox test cards only;
+the owner's account is unsuitable for checking paid access because it already has
+an independent grant. Remove the buyer UUID and disable Checkout after the test.
 These endpoints return `Cache-Control: no-store`; do not store their URLs in browser
 storage or logs. See [Stripe Checkout](https://docs.stripe.com/api/checkout/sessions/create)
 and [Customer Portal](https://docs.stripe.com/api/customer_portal/sessions/create).
+
+For a manual sandbox check, use two verified, allowlisted accounts if both monthly
+and yearly purchases will be completed. With each account, open **Konto → Testa
+abonnemang** and select its plan. Check the currency, billing interval and tax in
+Checkout. Return without paying, then reopen the same plan: the existing open session
+should be reused, including when returning with the browser's Back button. Test a
+declined card before completing a successful payment. A different plan is blocked
+while the first session is open; after Stripe confirms it has expired a new plan can
+be selected. Complete the successful purchase last: returning to Tidrapporten should
+say the payment is being processed, and further purchases should be blocked pending
+stage 3. Confirm that a normal, non-allowlisted account still cannot start Checkout
+and that the owner's invoicing access is preserved. Do not reset purchase tables to
+test another completed purchase.
 
 ## Authentication
 

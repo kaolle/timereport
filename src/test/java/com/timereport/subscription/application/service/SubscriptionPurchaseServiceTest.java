@@ -59,13 +59,76 @@ class SubscriptionPurchaseServiceTest {
     }
 
     @Test
-    void anotherPlanCannotReplaceAnOpenCheckout() {
+    void anotherPlanCannotReplaceACreatingCheckout() {
         UUID account = UUID.randomUUID();
         when(repository.reserve(account, SubscriptionPlan.YEARLY, NOW)).thenReturn(
                 attempt(account, SubscriptionPlan.MONTHLY, CheckoutAttempt.State.CREATING));
 
         assertThrows(SubscriptionPurchaseConflict.class, () -> service.checkout(account, SubscriptionPlan.YEARLY));
         verify(billing, never()).createCustomer(any(), anyString(), anyString());
+    }
+
+    @Test
+    void anotherPlanCannotReplaceACheckoutStillOpenInStripe() {
+        UUID account = UUID.randomUUID();
+        var attempt = new CheckoutAttempt(UUID.randomUUID(), account, SubscriptionPlan.MONTHLY,
+                CheckoutAttempt.State.OPEN, "idem", "cs_test_existing", NOW.plusSeconds(3600));
+        when(repository.reserve(account, SubscriptionPlan.YEARLY, NOW)).thenReturn(attempt);
+        when(repository.customerId(account)).thenReturn(Optional.of("cus_own"));
+        when(billing.retrieveCheckout("cs_test_existing")).thenReturn(session("cus_own", HostedCheckout.State.OPEN));
+
+        assertThrows(SubscriptionPurchaseConflict.class, () -> service.checkout(account, SubscriptionPlan.YEARLY));
+        verify(repository, never()).expire(any());
+        verify(billing, never()).createCheckout(any(), any(), anyString(), any(), anyString());
+    }
+
+    @Test
+    void expiredMonthlyCheckoutAllowsANewYearlyCheckout() {
+        UUID account = UUID.randomUUID();
+        var expired = new CheckoutAttempt(UUID.randomUUID(), account, SubscriptionPlan.MONTHLY,
+                CheckoutAttempt.State.OPEN, "old-idem", "cs_test_expired", NOW.minusSeconds(1));
+        var yearly = attempt(account, SubscriptionPlan.YEARLY, CheckoutAttempt.State.CREATING);
+        var session = session("cus_own", HostedCheckout.State.OPEN);
+        when(repository.reserve(account, SubscriptionPlan.YEARLY, NOW)).thenReturn(expired, yearly);
+        when(repository.customerId(account)).thenReturn(Optional.of("cus_own"));
+        when(billing.retrieveCheckout("cs_test_expired")).thenReturn(session("cus_own", HostedCheckout.State.EXPIRED));
+        when(billing.createCheckout(account, yearly.id(), "cus_own", SubscriptionPlan.YEARLY,
+                yearly.idempotencyKey())).thenReturn(session);
+
+        assertEquals(session, service.checkout(account, SubscriptionPlan.YEARLY));
+        verify(repository).expire(expired.id());
+        verify(repository).open(yearly.id(), session.sessionId(), session.expiresAt());
+        verify(billing, never()).createCustomer(any(), anyString(), anyString());
+    }
+
+    @Test
+    void completedCheckoutBlocksAnotherPlanUntilVerifiedPaymentEvent() {
+        UUID account = UUID.randomUUID();
+        var attempt = new CheckoutAttempt(UUID.randomUUID(), account, SubscriptionPlan.MONTHLY,
+                CheckoutAttempt.State.OPEN, "idem", "cs_test_existing", NOW.plusSeconds(3600));
+        when(repository.reserve(account, SubscriptionPlan.YEARLY, NOW)).thenReturn(attempt);
+        when(repository.customerId(account)).thenReturn(Optional.of("cus_own"));
+        when(billing.retrieveCheckout("cs_test_existing")).thenReturn(session("cus_own", HostedCheckout.State.COMPLETE));
+
+        assertThrows(SubscriptionPurchaseConflict.class, () -> service.checkout(account, SubscriptionPlan.YEARLY));
+        verify(repository).complete(attempt.id());
+        verify(repository, never()).expire(any());
+        verify(billing, never()).createCheckout(any(), any(), anyString(), any(), anyString());
+    }
+
+    @Test
+    void expiredCheckoutForAnotherCustomerCannotBeReplaced() {
+        UUID account = UUID.randomUUID();
+        var attempt = new CheckoutAttempt(UUID.randomUUID(), account, SubscriptionPlan.MONTHLY,
+                CheckoutAttempt.State.OPEN, "idem", "cs_test_existing", NOW.minusSeconds(1));
+        when(repository.reserve(account, SubscriptionPlan.YEARLY, NOW)).thenReturn(attempt);
+        when(repository.customerId(account)).thenReturn(Optional.of("cus_own"));
+        when(billing.retrieveCheckout("cs_test_existing")).thenReturn(session("cus_other", HostedCheckout.State.EXPIRED));
+
+        assertThrows(SubscriptionBillingUnavailable.class, () -> service.checkout(account, SubscriptionPlan.YEARLY));
+        verify(repository, never()).expire(any());
+        verify(repository, never()).complete(any());
+        verify(billing, never()).createCheckout(any(), any(), anyString(), any(), anyString());
     }
 
     @Test

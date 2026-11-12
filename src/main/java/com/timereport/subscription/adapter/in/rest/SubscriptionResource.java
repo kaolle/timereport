@@ -38,7 +38,8 @@ public class SubscriptionResource {
     @ResponseHeader(name = "Cache-Control", value = "no-store")
     public SubscriptionStatusResponse status() {
         var snapshot = subscriptions.status(identity.accountId());
-        return SubscriptionStatusResponse.from(snapshot, Instant.now(), rollout.availableTo(snapshot));
+        return SubscriptionStatusResponse.from(snapshot, Instant.now(), rollout.availableTo(snapshot),
+                rollout.canStartSandboxCheckout(snapshot));
     }
 
     @POST
@@ -62,7 +63,8 @@ public class SubscriptionResource {
     }
 
     private void requireRolloutAccess() {
-        if (rollout.availableTo(subscriptions.status(identity.accountId()))) return;
+        var subscription = subscriptions.status(identity.accountId());
+        if (rollout.canAccessSandboxBilling(subscription)) return;
         throw new WebApplicationException(Response.status(Response.Status.FORBIDDEN)
                 .type(MediaType.APPLICATION_JSON).header("Cache-Control", "no-store")
                 .entity(SubscriptionBillingErrorResponse.builder().code("INVOICING_COMING_SOON")

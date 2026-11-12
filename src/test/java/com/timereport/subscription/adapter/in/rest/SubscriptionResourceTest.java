@@ -25,7 +25,8 @@ class SubscriptionResourceTest {
         given().auth().oauth2(token).get("/api/subscription").then().statusCode(200)
                 .header("Cache-Control", "no-store")
                 .body("status", equalTo("NONE"), "ownerAccess", equalTo(false),
-                        "entitled", equalTo(false), "invoicingAvailable", equalTo(true));
+                        "entitled", equalTo(false), "invoicingAvailable", equalTo(true),
+                        "sandboxCheckoutAvailable", equalTo(false));
         given().auth().oauth2(token).contentType(ContentType.JSON).body(Map.of("plan", "MONTHLY"))
                 .post("/api/subscription/checkout").then().statusCode(503)
                 .header("Cache-Control", "no-store").body("code", equalTo("BILLING_UNAVAILABLE"));

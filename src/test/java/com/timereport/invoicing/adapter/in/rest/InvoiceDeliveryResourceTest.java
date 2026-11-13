@@ -12,6 +12,10 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
@@ -126,9 +130,25 @@ class InvoiceDeliveryResourceTest {
                 .body("[0].status.paid", equalTo(true), "[0].status.sent", equalTo(true), "[0].lastDelivery.state", equalTo("SENT"));
         assertArrayEquals(pdf, given().auth().oauth2(token).get(path + "/pdf").then().statusCode(200).extract().asByteArray());
         var nextRequest = Map.of("recipient", recipient, "requestId", UUID.randomUUID());
-        var results = java.util.stream.IntStream.range(0, 2).parallel().mapToObj(ignored ->
-                given().auth().oauth2(token).contentType("application/json").body(nextRequest).post(path + "/email")
-                        .then().statusCode(200).extract().path("state")).toList();
+        var testClassLoader = Thread.currentThread().getContextClassLoader();
+        var start = new CyclicBarrier(2);
+        List<String> results;
+        // Jackson's service discovery must use Quarkus's test classloader rather
+        // than the system classloader on shared ForkJoinPool worker threads.
+        try (var executor = Executors.newFixedThreadPool(2, task -> {
+            var worker = new Thread(task);
+            worker.setContextClassLoader(testClassLoader);
+            return worker;
+        })) {
+            Callable<String> sendConcurrently = () -> {
+                start.await(10, TimeUnit.SECONDS);
+                return given().auth().oauth2(token).contentType("application/json").body(nextRequest).post(path + "/email")
+                        .then().statusCode(200).extract().path("state");
+            };
+            var first = executor.submit(sendConcurrently);
+            var second = executor.submit(sendConcurrently);
+            results = List.of(first.get(30, TimeUnit.SECONDS), second.get(30, TimeUnit.SECONDS));
+        }
         assertTrue(results.stream().allMatch(state -> state.equals("SENDING") || state.equals("SENT")));
         assertEquals(2, mailbox.getMailMessagesSentTo(recipient).size());
         given().auth().oauth2(token).get("/api/invoicing/invoices").then().statusCode(200)

@@ -6,6 +6,7 @@ import com.timereport.subscription.application.port.out.SubscriptionAccountEmail
 import com.timereport.subscription.application.port.out.SubscriptionBillingGateway;
 import com.timereport.subscription.application.port.out.SubscriptionPurchaseRepository;
 import com.timereport.subscription.application.port.out.SubscriptionRepository;
+import com.timereport.subscription.application.port.out.SubscriptionPriceRepository;
 import com.timereport.subscription.application.service.SubscriptionAccessService;
 import com.timereport.subscription.application.service.SubscriptionPurchaseService;
 import jakarta.enterprise.inject.Produces;
@@ -23,7 +24,8 @@ public class SubscriptionConfiguration {
     @Produces
     @Singleton
     SubscriptionPurchases subscriptionPurchases(SubscriptionPurchaseRepository repository,
-                                                SubscriptionBillingGateway billing, SubscriptionAccountEmail accounts) {
-        return new SubscriptionPurchaseService(repository, billing, accounts, Clock.systemUTC());
+                                                SubscriptionBillingGateway billing, SubscriptionAccountEmail accounts,
+                                                SubscriptionPriceRepository prices) {
+        return new SubscriptionPurchaseService(repository, billing, accounts, prices, Clock.systemUTC());
     }
 }

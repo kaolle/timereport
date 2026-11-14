@@ -3,6 +3,7 @@ package com.timereport.authentication.adapter.in.rest;
 import com.timereport.authentication.application.port.in.AccountIdentity;
 import com.timereport.authentication.application.port.in.Authentication;
 import com.timereport.authentication.application.port.out.AuthRepository;
+import com.timereport.authentication.application.port.out.AccountRoles;
 import com.timereport.authentication.domain.AuthTokens;
 import io.vertx.core.http.HttpServerRequest;
 import jakarta.validation.Valid;
@@ -22,6 +23,7 @@ public class AuthenticationResource {
     private final Authentication auth;
     private final AccountIdentity identity;
     private final AuthRepository repository;
+    private final AccountRoles roles;
     private final AuthRateLimiter limiter;
     private final HttpServerRequest http;
     @ConfigProperty(name = "auth.public-url")
@@ -33,11 +35,12 @@ public class AuthenticationResource {
     @ConfigProperty(name = "auth.email-verification-required", defaultValue = "true")
     boolean emailVerificationRequired;
 
-    public AuthenticationResource(Authentication auth, AccountIdentity identity, AuthRepository repository,
+    public AuthenticationResource(Authentication auth, AccountIdentity identity, AuthRepository repository, AccountRoles roles,
                                   AuthRateLimiter limiter, HttpServerRequest http) {
         this.auth = auth;
         this.identity = identity;
         this.repository = repository;
+        this.roles = roles;
         this.limiter = limiter;
         this.http = http;
     }
@@ -138,7 +141,7 @@ public class AuthenticationResource {
     @Path("/me")
     public AccountResponse me() {
         var account = repository.account(identity.accountId()).orElseThrow(com.timereport.authentication.application.service.AuthenticationFailed::new);
-        return new AccountResponse(account.id(), account.email());
+        return AccountResponse.builder().accountId(account.id()).email(account.email()).roles(roles.roles(account.id())).build();
     }
 
     private Response accepted() {
@@ -147,7 +150,8 @@ public class AuthenticationResource {
 
     private Response loggedIn(AuthTokens tokens) {
         return Response.ok(LoginResponse.builder().accessToken(tokens.accessToken()).tokenType("Bearer")
-                        .expiresIn(tokens.expiresIn()).account(new AccountResponse(tokens.account().id(), tokens.account().email())).build())
+                        .expiresIn(tokens.expiresIn()).account(AccountResponse.builder().accountId(tokens.account().id())
+                                .email(tokens.account().email()).roles(roles.roles(tokens.account().id())).build()).build())
                 .header("Set-Cookie", cookie(tokens.refreshToken(), Math.max(0, tokens.refreshExpiresAt().getEpochSecond() - Instant.now().getEpochSecond())))
                 .build();
     }

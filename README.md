@@ -380,12 +380,15 @@ to use Stripe test Checkout and Portal; it does **not** unlock invoicing. When s
 Checkout is enabled, the test account sees “Testa abonnemang” under **Konto**.
 Its status response exposes `sandboxCheckoutAvailable` for this control.
 
-Stage 2 adds test-only Stripe Checkout and Customer Portal endpoints. Set up one Stripe
-test product with two recurring **SEK** prices (monthly and yearly, interval count 1),
-an active test tax rate, and a portal configuration with plan changes disabled. Set
-`STRIPE_SECRET_KEY=sk_test_...`, `STRIPE_PRICE_MONTHLY=price_...`,
-`STRIPE_PRICE_YEARLY=price_...`, `STRIPE_TAX_RATE=txr_...`,
-`STRIPE_PORTAL_CONFIGURATION=bpc_...`, and `SUBSCRIPTION_CHECKOUT_ENABLED=true`.
+Stage 2 adds test-only Stripe Checkout and Customer Portal endpoints. An administrator
+creates **SEK** price models (monthly/yearly, amount, VAT and inclusive/exclusive tax)
+under **Administration**. The service creates the Stripe product, price and tax rate,
+saves their references in the database, and lets the administrator select the current
+price for each interval. See [SUBSCRIPTION_PRICING_ADMIN.md](SUBSCRIPTION_PRICING_ADMIN.md)
+for the initial SQL role grant and setup. `STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_YEARLY`
+and `STRIPE_TAX_RATE` are no longer used. Keep `STRIPE_SECRET_KEY=sk_test_...` in Secret
+Manager and configure `STRIPE_PORTAL_CONFIGURATION=bpc_...` for the portal. Enable
+`SUBSCRIPTION_CHECKOUT_ENABLED=true` when the selected prices are ready.
 The server rejects live keys and validates each selected price and tax rate in Stripe.
 Checkout remains disabled by default. Use a verified account and its access token:
 
@@ -398,7 +401,9 @@ Content-Type: application/json
 ```
 
 The response has a short-lived `url` for Stripe Checkout. `YEARLY` selects the other
-server-configured price. `POST /api/subscription/portal` returns a portal URL for the
+database-selected price. Each new Checkout attempt retains its selected price even
+if an administrator changes the current price before a retry. Existing Stripe
+subscriptions and open sessions keep their prices. `POST /api/subscription/portal` returns a portal URL for the
 same account after its Stripe Customer has been created. A second Checkout request
 reuses an open session; pending payment confirmation blocks another purchase. The
 return page says that payment is being processed. **A Checkout return does not grant
@@ -426,6 +431,14 @@ and that the owner's invoicing access is preserved. Do not reset purchase tables
 test another completed purchase.
 
 ## Authentication
+
+Accounts have an implicit `user` role. V15 adds explicit `account_roles` grants;
+the `admin` role is assigned by account UUID using SQL, never by email matching in
+application code or by registration input. Access-token `groups` and account responses
+include current roles on login and refresh. Admin price APIs require the signed JWT
+role and recheck the role in the database, so revocation is immediate. Cached role
+hints only control navigation. The `admin` role is separate from the existing
+invoicing `OWNER` entitlement.
 
 By default, registration is email first: request a verification link, open it, choose
 a password, and then log in. Passwords are chosen only after the email link is opened,

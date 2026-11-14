@@ -4,6 +4,7 @@ import com.timereport.subscription.application.port.in.SubscriptionPurchases;
 import com.timereport.subscription.application.port.out.SubscriptionAccountEmail;
 import com.timereport.subscription.application.port.out.SubscriptionBillingGateway;
 import com.timereport.subscription.application.port.out.SubscriptionPurchaseRepository;
+import com.timereport.subscription.application.port.out.SubscriptionPriceRepository;
 import com.timereport.subscription.domain.CheckoutAttempt;
 import com.timereport.subscription.domain.HostedCheckout;
 import com.timereport.subscription.domain.SubscriptionPlan;
@@ -17,13 +18,15 @@ public class SubscriptionPurchaseService implements SubscriptionPurchases {
     private final SubscriptionBillingGateway billing;
     private final SubscriptionAccountEmail accounts;
     private final Clock clock;
+    private final SubscriptionPriceRepository prices;
 
     public SubscriptionPurchaseService(SubscriptionPurchaseRepository repository, SubscriptionBillingGateway billing,
-                                       SubscriptionAccountEmail accounts, Clock clock) {
+                                       SubscriptionAccountEmail accounts, SubscriptionPriceRepository prices, Clock clock) {
         this.repository = repository;
         this.billing = billing;
         this.accounts = accounts;
         this.clock = clock;
+        this.prices = prices;
     }
 
     @Override
@@ -52,10 +55,13 @@ public class SubscriptionPurchaseService implements SubscriptionPurchases {
             throw new SubscriptionPurchaseConflict("Ett annat köp pågår redan för kontot.");
         if (attempt.state() != CheckoutAttempt.State.CREATING)
             throw new SubscriptionPurchaseConflict("Ett annat köp pågår redan för kontot.");
+        var price = prices.forCheckout(accountId, attempt.id(), plan);
+        if (price.plan() != plan)
+            throw new SubscriptionBillingUnavailable("Priset stämmer inte med det valda abonnemanget.");
         var customer = repository.customerId(accountId).orElseGet(() ->
                 repository.saveCustomerId(accountId, billing.createCustomer(accountId, accounts.email(accountId),
                         repository.customerIdempotencyKey(accountId))));
-        var session = billing.createCheckout(accountId, attempt.id(), customer, plan, attempt.idempotencyKey());
+        var session = billing.createCheckout(accountId, attempt.id(), customer, price, attempt.idempotencyKey());
         if (session.state() != HostedCheckout.State.OPEN || !customer.equals(session.customerId()))
             throw new SubscriptionBillingUnavailable("Stripe returnerade ingen giltig köpsession.");
         repository.open(attempt.id(), session.sessionId(), session.expiresAt());

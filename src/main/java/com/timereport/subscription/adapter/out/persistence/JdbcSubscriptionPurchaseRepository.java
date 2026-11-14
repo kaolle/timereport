@@ -83,7 +83,7 @@ public class JdbcSubscriptionPurchaseRepository implements SubscriptionPurchaseR
             UUID id = UUID.randomUUID();
             String key = "timereport-checkout-" + id;
             try (var insert = connection.prepareStatement("INSERT INTO subscription_checkout_attempts "
-                    + "(id, account_id, plan, status, idempotency_key) VALUES (?, ?, ?, 'CREATING', ?)")) {
+                    + "(id, account_id, plan, status, idempotency_key, catalog_pricing) VALUES (?, ?, ?, 'CREATING', ?, true)")) {
                 insert.setObject(1, id);
                 insert.setObject(2, accountId);
                 insert.setString(3, plan.name());

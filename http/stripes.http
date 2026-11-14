@@ -1,0 +1,39 @@
+# Stripe sandbox-anrop för IntelliJ HTTP Client.
+# 1. Fyll i sandboxens nyckel i http-client.private.env.json i denna katalog.
+#    Kopiera http-client.private.env.json.example om den privata filen saknas.
+# 2. Välj "stripe-local" i "Run with" och kör ett anrop med pilen till vänster.
+# 3. Lägg till fler anrop med ### som avskiljare och samma Authorization-header.
+# Dokumentation: https://docs.stripe.com/api/customer_portal/configurations/list
+
+@stripeApiUrl = https://api.stripe.com/v1
+
+### Hämta standardportalen: data[0].id används som STRIPE_PORTAL_CONFIGURATION
+# @name getDefaultPortalConfiguration
+# @no-log
+GET {{stripeApiUrl}}/billing_portal/configurations?is_default=true&active=true
+Authorization: Bearer {{STRIPE_SECRET_KEY}}
+Accept: application/json
+
+
+### Lista aktiva portalkonfigurationer
+# @name listPortalConfigurations
+# @no-log
+GET {{stripeApiUrl}}/billing_portal/configurations?active=true&limit=100
+Authorization: Bearer {{STRIPE_SECRET_KEY}}
+Accept: application/json
+
+### Hämta en portalkonfiguration: fyll i bpc_-värdet i den privata miljöfilen först
+# @name getPortalConfiguration
+# @no-log
+GET {{stripeApiUrl}}/billing_portal/configurations/{{STRIPE_PORTAL_CONFIGURATION}}
+Authorization: Bearer {{STRIPE_SECRET_KEY}}
+Accept: application/json
+
+### Lista aktiva återkommande SEK-priser i sandboxen
+# @name listRecurringPrices
+# @no-log
+GET {{stripeApiUrl}}/prices?active=true&type=recurring&currency=sek&limit=100
+Authorization: Bearer {{STRIPE_SECRET_KEY}}
+Accept: application/json
+
+# Listanrop visar högst 100 poster. Vid has_more=true: ange starting_after=<sista id>.

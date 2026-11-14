@@ -1,7 +1,7 @@
 package com.timereport.subscription.application.port.out;
 
 import com.timereport.subscription.domain.HostedCheckout;
-import com.timereport.subscription.domain.SubscriptionPlan;
+import com.timereport.subscription.domain.SubscriptionPriceModel;
 
 import java.util.UUID;
 
@@ -13,7 +13,7 @@ public interface SubscriptionBillingGateway {
     String createCustomer(UUID accountId, String email, String idempotencyKey);
 
     HostedCheckout createCheckout(UUID accountId, UUID attemptId, String customerId,
-                                  SubscriptionPlan plan, String idempotencyKey);
+                                  SubscriptionPriceModel model, String idempotencyKey);
 
     HostedCheckout retrieveCheckout(String sessionId);
 

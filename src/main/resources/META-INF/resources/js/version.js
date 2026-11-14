@@ -1,2 +1,2 @@
 // Change only this value when releasing updated web assets.
-export const APP_VERSION = '67';
+export const APP_VERSION = '68';

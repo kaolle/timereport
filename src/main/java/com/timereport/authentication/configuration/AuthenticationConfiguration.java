@@ -1,11 +1,15 @@
 package com.timereport.authentication.configuration;
 
 import com.timereport.authentication.application.port.in.Authentication;
+import com.timereport.authentication.application.port.in.AccountAuthorization;
+import com.timereport.authentication.application.port.in.AccountIdentity;
 import com.timereport.authentication.application.port.out.AccountMail;
+import com.timereport.authentication.application.port.out.AccountRoles;
 import com.timereport.authentication.application.port.out.AuthRepository;
 import com.timereport.authentication.application.port.out.Passwords;
 import com.timereport.authentication.application.port.out.Tokens;
 import com.timereport.authentication.application.service.AuthenticationService;
+import com.timereport.authentication.application.service.AccountAuthorizationService;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Singleton;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -13,6 +17,12 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.time.Clock;
 
 public class AuthenticationConfiguration {
+    @Produces
+    @Singleton
+    public AccountAuthorization authorization(AccountIdentity identity, AccountRoles roles) {
+        return new AccountAuthorizationService(identity, roles);
+    }
+
     @Produces
     @Singleton
     public Authentication authentication(AuthRepository repository, Passwords passwords, Tokens tokens, AccountMail mail,

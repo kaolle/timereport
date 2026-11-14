@@ -222,11 +222,15 @@ Kontrollera att `kaolle@gmail.com` har en aktiv grant innan denna revision drift
 annars blir även ditt konto spärrat. Sätt flaggan till `false` först vid lansering.
 V14 lägger till spårning av Checkout-sessioners giltighet och färdigbehandlade köp.
 Den nya Stripe-integrationen är avstängd med `SUBSCRIPTION_CHECKOUT_ENABLED=false`.
-Skapa bara Stripe-**test**priser, en aktiv testmomssats och en portal-konfiguration
-med planbyte avstängt innan den aktiveras i en testmiljö. Konfigurera då
-`STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_YEARLY`, `STRIPE_TAX_RATE` och
-`STRIPE_PORTAL_CONFIGURATION` som vanliga miljövariabler. Lägg `STRIPE_SECRET_KEY`
-(`sk_test_...`) i Secret Manager och ge runtime-kontot åtkomst. Använd aldrig en
+V15 lägger till databasroller och V16 lägger till prismodeller och valda månads-/årspriser.
+Ge ditt konto rollen `admin` via SQL och skapa testpriser med momssats i menyn
+**Administration**, enligt [SUBSCRIPTION_PRICING_ADMIN.md](SUBSCRIPTION_PRICING_ADMIN.md).
+Tjänsten skapar Stripe-id:n och lagrar dem i databasen. `STRIPE_PRICE_MONTHLY`,
+`STRIPE_PRICE_YEARLY` och `STRIPE_TAX_RATE` används inte längre och kan tas bort
+från Cloud Run efter uppgraderingen. Konfigurera `STRIPE_PORTAL_CONFIGURATION`
+som vanlig miljövariabel för kundportalen med planbyte avstängt. Lägg `STRIPE_SECRET_KEY`
+(`sk_test_...`) i Secret Manager och ge runtime-kontot åtkomst. Prisadministration
+kan förberedas med Checkout avstängd. Använd aldrig en
 live-nyckel i etapp 2; koden avvisar den. Checkout aktiverar inte fakturering förrän
 verifierade betalhändelser hanteras i etapp 3. Låt därför
 `SUBSCRIPTION_ENFORCE_INVOICE_ACCESS=false` under denna utrullning.

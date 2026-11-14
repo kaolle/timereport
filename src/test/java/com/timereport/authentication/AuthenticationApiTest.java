@@ -10,6 +10,8 @@ import javax.sql.DataSource;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Base64;
+import java.nio.charset.StandardCharsets;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
@@ -25,6 +27,69 @@ class AuthenticationApiTest {
     DataSource dataSource;
     @Inject
     MockMailbox mailbox;
+
+    @Test
+    void databaseAdminGrantIsIncludedInLoginAndRefreshedTokensAndCanBeRevoked() throws Exception {
+        var original = support.login();
+        UUID accountId = UUID.fromString(original.accountId());
+        assertEquals(Set.of("user"), jwtGroups(original.accessToken()));
+        given().auth().oauth2(original.accessToken()).get("/api/auth/me").then().statusCode(200)
+                .body("roles", contains("user"));
+        try {
+            try (var connection = dataSource.getConnection(); var grant = connection.prepareStatement(
+                    "INSERT INTO account_roles(account_id, role) VALUES (?, 'admin')")) {
+                grant.setObject(1, accountId);
+                grant.executeUpdate();
+            }
+            var loggedInAdmin = support.login(original.email(), AuthTestSupport.PASSWORD);
+            assertEquals(Set.of("user", "admin"), jwtGroups(loggedInAdmin.accessToken()));
+            var refreshed = given().header("X-Requested-With", "timereport")
+                    .cookie("timereport_refresh", original.refreshToken()).post("/api/auth/refresh")
+                    .then().statusCode(200).body("account.roles", containsInAnyOrder("user", "admin"))
+                    .extract().response();
+            assertEquals(Set.of("user", "admin"), jwtGroups(refreshed.path("accessToken")));
+
+            try (var connection = dataSource.getConnection(); var revoke = connection.prepareStatement(
+                    "DELETE FROM account_roles WHERE account_id=? AND role='admin'")) {
+                revoke.setObject(1, accountId);
+                revoke.executeUpdate();
+            }
+            given().auth().oauth2(loggedInAdmin.accessToken()).get("/api/auth/me").then().statusCode(200)
+                    .body("roles", contains("user"));
+            var revoked = given().header("X-Requested-With", "timereport")
+                    .cookie("timereport_refresh", refreshed.cookie("timereport_refresh"))
+                    .post("/api/auth/refresh").then().statusCode(200).body("account.roles", contains("user"))
+                    .extract().response();
+            assertEquals(Set.of("user"), jwtGroups(revoked.path("accessToken")));
+        } finally {
+            try (var connection = dataSource.getConnection(); var revoke = connection.prepareStatement(
+                    "DELETE FROM account_roles WHERE account_id=?")) {
+                revoke.setObject(1, accountId);
+                revoke.executeUpdate();
+            }
+        }
+    }
+
+    @Test
+    void registrationCannotAssignItsOwnAdministrativeRole() {
+        String email = UUID.randomUUID() + "@example.test";
+        given().header("X-Requested-With", "timereport").contentType("application/json")
+                .body(Map.of("email", email, "roles", java.util.List.of("admin")))
+                .post("/api/auth/register").then().statusCode(202);
+        given().header("X-Requested-With", "timereport").contentType("application/json")
+                .body(Map.of("token", support.mailToken(email, "verify"), "password", AuthTestSupport.PASSWORD))
+                .post("/api/auth/verify-email").then().statusCode(204);
+        var login = given().header("X-Requested-With", "timereport").contentType("application/json")
+                .body(Map.of("email", email, "password", AuthTestSupport.PASSWORD, "roles", java.util.List.of("admin")))
+                .post("/api/auth/login").then().statusCode(200).body("account.roles", contains("user"))
+                .extract().response();
+        assertEquals(Set.of("user"), jwtGroups(login.path("accessToken")));
+    }
+
+    private static Set<String> jwtGroups(String raw) {
+        String payload = new String(Base64.getUrlDecoder().decode(raw.split("\\.")[1]), StandardCharsets.UTF_8);
+        return Set.copyOf(io.restassured.path.json.JsonPath.from(payload).getList("groups", String.class));
+    }
 
     @Test
     void replacedVerificationLinkCannotBeReusedAfterImmediateDelivery() throws Exception {

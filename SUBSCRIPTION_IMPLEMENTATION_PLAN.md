@@ -122,7 +122,9 @@ som sparar vem, när och varför. Aktivera inte produktionsspärren innan utrull
 Flödena för nytt köp, återförsök, Stripe-retur och kundportal finns i
 [PlantUML-diagrammet](puml/subscription-stage2-flow.puml).
 
-- Skapa testprodukt/priser och lagra deras id:n i serverkonfiguration.
+- Prisadministration: skapa testprodukt/priser/momssats via ett rollskyddat API och
+  lagra id:n i databasen. En aktuell modell per intervall väljs för nya köp;
+  ett påbörjat köp binds till sin modell. Se [SUBSCRIPTION_PRICING_ADMIN.md](SUBSCRIPTION_PRICING_ADMIN.md).
 - Föreslagna API:er: `GET /api/subscription`, `POST /api/subscription/checkout`
   och `POST /api/subscription/portal`. Kontot härleds från den verifierade sessionen.
 - Skapa Stripe Customer från kontots abonnemangsuppgifter. Tillåt högst ett
@@ -229,7 +231,8 @@ gratisflödet eller åtkomsten till befintliga fakturor försvinner.
 - Före skarpa köp: fastställ pris/moms, avtalsvillkor, uppsägning/återbetalning,
   integritetstext, Stripe-verifiering av ditt företag och kraven i PCI Dashboard.
 - Lägg `STRIPE_SECRET_KEY` och `STRIPE_WEBHOOK_SECRET` i Secret Manager. Konfigurera
-  `STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_YEARLY`, `PUBLIC_URL` och vald respit på servern.
+  `PUBLIC_URL` och vald respit på servern. Prisreferenser och momssatser administreras
+  i databasen via administrationsgränssnittet.
   Test- och produktionsreferenser hålls åtskilda; lås en stödd Stripe-API/SDK-version.
 - Testa med sandbox först. Välj sedan ett begränsat, uttryckligen godkänt skarpt köp
   för verifiering av moms, underlag, åtkomst, uppsägning och eventuell återbetalning.

@@ -12,14 +12,15 @@ skinparam activity {
 start
 :Välj scenario;
 note right
-  Köp- och portal-API finns, men webbsidan har ännu ingen planvalsvy.
+  Konto har testknappar för tillåtna köparkonton.
+  Administration hanterar prismodeller med rollen admin.
   Avbryt på Stripe kan lämna en session OPEN; återförsök kan då få samma URL.
   En success-URL ger aldrig betalåtkomst. Signerade betalhändelser hör till etapp 3.
   Stäng inte av OWNER-spärren innan den framtida betalspärren är aktiv.
 end note
 if (Scenario?) then (Nytt köp eller återförsök)
   :POST /api/subscription/checkout\nplan = MONTHLY eller YEARLY;
-  if (Inloggad och OWNER under förlanseringen?) then (Nej)
+  if (Inloggad och OWNER eller tillåten testköpare?) then (Nej)
     :403 INVOICING_COMING_SOON;
     stop
   endif
@@ -33,13 +34,13 @@ if (Scenario?) then (Nytt köp eller återförsök)
     stop
   endif
   if (Pågående försök finns?) then (Ja)
-    if (Samma plan?) then (Nej)
-      :409 – annat köp pågår;
-      stop
-    endif
     if (Försök OPEN?) then (Ja)
       :Hämta sessionen från Stripe\noch verifiera kontots Customer-ID;
       if (Stripe-session OPEN?) then (Ja)
+        if (Samma plan?) then (Nej)
+          :409 – annat köp pågår;
+          stop
+        endif
         :Returnera samma Checkout-URL;
         stop
       elseif (Stripe-session COMPLETE?) then (Ja)
@@ -59,14 +60,39 @@ if (Scenario?) then (Nytt köp eller återförsök)
   else (Nej)
     :Reservera CREATING med\nunik idempotensnyckel;
   endif
+  if (Försöket har rätt plan och använder priskatalogen?) then (Nej)
+    :409 – annat eller äldre köp måste stämmas av;
+    stop
+  endif
+  :Lås köpförsöket och återanvänd bundet pris,
+  annars välj aktuellt databaspris för planen;
+  if (Färdig prismodell finns?) then (Nej)
+    :503 – be administratören skapa och välja pris;
+    stop
+  endif
+  :Spara prisbindningen före Stripe-anrop;
   if (Stripe Customer finns för kontot?) then (Nej)
     :Skapa testkund med kontobunden\nidempotensnyckel;
   endif
-  :Välj serverns pris för planen;\nverifiera SEK, testläge och moms;
+  :Verifiera modellens Stripe-referenser,\nbelopp, SEK, intervall och moms;
   :Skapa Checkout-session hos Stripe\nmed returadresser från PUBLIC_URL;
   :Spara OPEN, sessions-ID och utgångstid;
   :Returnera tidsbegränsad Checkout-URL;
   :Klienten kan öppna Stripes betalningssida;
+  stop
+
+elseif (Prisadministration) then (Admin)
+  :Kontrollera JWT-gruppen admin\noch aktuell databasroll;
+  if (Behörig?) then (Nej)
+    :401/403;
+    stop
+  endif
+  :Ange namn, månad/år, belopp och moms;
+  :Spara prismodell CREATING med begäran-id;
+  :Skapa Stripe-testprodukt, momssats och pris\nmed stabila idempotensnycklar;
+  :Spara Stripe-referenser och READY;
+  :Administratören väljer aktuellt pris för intervallet;
+  :Nya obundna köp använder valt pris;\nbefintliga köp behåller sitt pris;
   stop
 
 elseif (Stripe-retur) then (Återkomst)
@@ -86,7 +112,7 @@ elseif (Stripe-retur) then (Återkomst)
 
 else (Kundportal)
   :POST /api/subscription/portal;
-  if (Inloggad och OWNER under förlanseringen?) then (Nej)
+  if (Inloggad och OWNER eller tillåten testköpare?) then (Nej)
     :403 INVOICING_COMING_SOON;
     stop
   endif

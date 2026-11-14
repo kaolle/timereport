@@ -3,6 +3,7 @@ package com.timereport.subscription.adapter.out.stripe;
 import com.stripe.StripeClient;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Price;
+import com.stripe.model.TaxRate;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.CustomerCreateParams;
@@ -11,6 +12,7 @@ import com.timereport.subscription.application.port.out.SubscriptionBillingGatew
 import com.timereport.subscription.application.service.SubscriptionBillingUnavailable;
 import com.timereport.subscription.domain.HostedCheckout;
 import com.timereport.subscription.domain.SubscriptionPlan;
+import com.timereport.subscription.domain.SubscriptionPriceModel;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -23,35 +25,30 @@ import java.util.UUID;
 public class StripeBillingGateway implements SubscriptionBillingGateway {
     private final boolean enabled;
     private final String secretKey;
-    private final String monthlyPrice;
-    private final String yearlyPrice;
-    private final String taxRate;
     private final String portalConfiguration;
     private final String publicUrl;
     private volatile StripeClient client;
 
     public StripeBillingGateway(@ConfigProperty(name = "subscription.checkout-enabled") boolean enabled,
                                 @ConfigProperty(name = "subscription.stripe.secret-key") Optional<String> secretKey,
-                                @ConfigProperty(name = "subscription.stripe.price-monthly") Optional<String> monthlyPrice,
-                                @ConfigProperty(name = "subscription.stripe.price-yearly") Optional<String> yearlyPrice,
-                                @ConfigProperty(name = "subscription.stripe.tax-rate") Optional<String> taxRate,
                                 @ConfigProperty(name = "subscription.stripe.portal-configuration") Optional<String> portalConfiguration,
                                 @ConfigProperty(name = "auth.public-url") String publicUrl) {
         this.enabled = enabled;
         this.secretKey = secretKey.orElse("");
-        this.monthlyPrice = monthlyPrice.orElse("");
-        this.yearlyPrice = yearlyPrice.orElse("");
-        this.taxRate = taxRate.orElse("");
         this.portalConfiguration = portalConfiguration.orElse("");
         this.publicUrl = publicUrl;
     }
 
     @Override
     public void requireCheckoutConfigured() {
-        if (!enabled || !secretKey.startsWith("sk_test_") || !monthlyPrice.startsWith("price_")
-                || !yearlyPrice.startsWith("price_") || !taxRate.startsWith("txr_"))
+        if (!enabled || !secretKey.startsWith("sk_test_"))
             throw new SubscriptionBillingUnavailable("Abonnemangsköp är inte konfigurerade för Stripes testmiljö.");
         requireSafePublicUrl();
+    }
+
+    void requirePricingConfigured() {
+        if (!secretKey.startsWith("sk_test_"))
+            throw new SubscriptionBillingUnavailable("Prishanteringen kräver en Stripe-nyckel för testmiljön.");
     }
 
     @Override
@@ -84,7 +81,7 @@ public class StripeBillingGateway implements SubscriptionBillingGateway {
                     .putMetadata("timereport_account_id", accountId.toString()).build();
             var options = RequestOptions.builder().setIdempotencyKey(idempotencyKey).build();
             var customer = client().v1().customers().create(params, options);
-            if (Boolean.TRUE.equals(customer.getLivemode()) || customer.getId() == null)
+            if (!Boolean.FALSE.equals(customer.getLivemode()) || customer.getId() == null)
                 throw new SubscriptionBillingUnavailable("Stripe returnerade ingen testkund.");
             return customer.getId();
         } catch (StripeException e) {
@@ -94,22 +91,26 @@ public class StripeBillingGateway implements SubscriptionBillingGateway {
 
     @Override
     public HostedCheckout createCheckout(UUID accountId, UUID attemptId, String customerId,
-                                         SubscriptionPlan plan, String idempotencyKey) {
+                                         SubscriptionPriceModel model, String idempotencyKey) {
+        requireCheckoutConfigured();
+        if (model.state() != SubscriptionPriceModel.State.READY)
+            throw new SubscriptionBillingUnavailable("Stripe-priset är inte färdigt att använda.");
         try {
-            var price = price(plan);
-            validatePrice(price, plan);
-            var rate = client().v1().taxRates().retrieve(taxRate);
-            if (!Boolean.TRUE.equals(rate.getActive()) || !Boolean.FALSE.equals(rate.getLivemode()))
-                throw new SubscriptionBillingUnavailable("Momsinställningen måste vara aktiv i Stripes testmiljö.");
+            var price = client().v1().prices().retrieve(model.stripe().priceId());
+            validatePrice(price, model);
+            var rate = client().v1().taxRates().retrieve(model.stripe().taxRateId());
+            validateTaxRate(rate, model);
             var item = com.stripe.param.checkout.SessionCreateParams.LineItem.builder()
-                    .setPrice(price.getId()).setQuantity(1L).addTaxRate(taxRate).build();
+                    .setPrice(price.getId()).setQuantity(1L).addTaxRate(rate.getId()).build();
             var subscription = com.stripe.param.checkout.SessionCreateParams.SubscriptionData.builder()
-                    .putMetadata("timereport_account_id", accountId.toString()).build();
+                    .putMetadata("timereport_account_id", accountId.toString())
+                    .putMetadata("timereport_price_model_id", model.id().toString()).build();
             var params = com.stripe.param.checkout.SessionCreateParams.builder()
                     .setMode(com.stripe.param.checkout.SessionCreateParams.Mode.SUBSCRIPTION)
                     .setUiMode(com.stripe.param.checkout.SessionCreateParams.UiMode.HOSTED_PAGE)
                     .setCustomer(customerId).setClientReferenceId(attemptId.toString())
                     .putMetadata("timereport_account_id", accountId.toString())
+                    .putMetadata("timereport_price_model_id", model.id().toString())
                     .setSubscriptionData(subscription).addLineItem(item)
                     .addAllowedPaymentMethodType(
                             com.stripe.param.checkout.SessionCreateParams.AllowedPaymentMethodType.CARD)
@@ -154,18 +155,25 @@ public class StripeBillingGateway implements SubscriptionBillingGateway {
         }
     }
 
-    private Price price(SubscriptionPlan plan) throws StripeException {
-        return client().v1().prices().retrieve(plan == SubscriptionPlan.MONTHLY ? monthlyPrice : yearlyPrice);
-    }
-
-    private void validatePrice(Price price, SubscriptionPlan plan) {
-        String interval = plan == SubscriptionPlan.MONTHLY ? "month" : "year";
-        if (!Boolean.TRUE.equals(price.getActive()) || !Boolean.FALSE.equals(price.getLivemode())
+    private void validatePrice(Price price, SubscriptionPriceModel model) {
+        String interval = model.plan() == SubscriptionPlan.MONTHLY ? "month" : "year";
+        if (price == null || !Boolean.TRUE.equals(price.getActive()) || !Boolean.FALSE.equals(price.getLivemode())
+                || !model.stripe().priceId().equals(price.getId())
+                || !model.stripe().productId().equals(price.getProduct())
                 || !"sek".equals(price.getCurrency()) || price.getRecurring() == null
                 || !interval.equals(price.getRecurring().getInterval())
                 || !Long.valueOf(1).equals(price.getRecurring().getIntervalCount())
-                || price.getUnitAmount() == null || price.getUnitAmount() <= 0)
-            throw new SubscriptionBillingUnavailable("Stripe-priset måste vara aktivt, återkommande i SEK och i testläge.");
+                || !Long.valueOf(model.amountMinor()).equals(price.getUnitAmount())
+                || !(model.vatInclusive() ? "inclusive" : "exclusive").equals(price.getTaxBehavior()))
+            throw new SubscriptionBillingUnavailable("Stripe-priset stämmer inte med den valda prismodellen.");
+    }
+
+    private void validateTaxRate(TaxRate rate, SubscriptionPriceModel model) {
+        if (rate == null || !Boolean.TRUE.equals(rate.getActive()) || !Boolean.FALSE.equals(rate.getLivemode())
+                || !model.stripe().taxRateId().equals(rate.getId()) || rate.getPercentage() == null
+                || model.vatPercent().compareTo(rate.getPercentage()) != 0
+                || !Boolean.valueOf(model.vatInclusive()).equals(rate.getInclusive()))
+            throw new SubscriptionBillingUnavailable("Stripe-momsen stämmer inte med den valda prismodellen.");
     }
 
     private HostedCheckout fromSession(Session session) {

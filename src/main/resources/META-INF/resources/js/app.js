@@ -6,6 +6,7 @@ import {configureAppShell, configureNavigation, prepareOffline} from './app-shel
 import {configureInvoicingSettings} from './invoicing-settings.js';
 import {configureInvoicingAccess} from './invoicing-access.js';
 import {configureSandboxSubscription} from './sandbox-subscription.js';
+import {configureSubscriptionPricing} from './subscription-pricing.js';
 import {configureAccountTools, logout, requireAccount} from './auth.js';
 import {configureCommentSuggestions} from './comment-suggestions.js';
 import {formatMinutes, normalizeTime, shiftDate, today, validDate, workedMinutes} from './domain.js';
@@ -55,6 +56,7 @@ const monthlyReport = configureMonthlyReport({onCache: reloadLocal});
 const invoicingSettings = configureInvoicingSettings();
 const invoicingAccess = configureInvoicingAccess(() => invoicingSettings.refreshIfOpen());
 const sandboxSubscription = configureSandboxSubscription();
+const subscriptionPricing = configureSubscriptionPricing();
 
 const synchronization = configureSynchronization({
     isReady: () => ready,
@@ -98,6 +100,7 @@ configureNavigation(view => {
     if (view === 'report') void monthlyReport.refreshIfOpen();
     if (view === 'invoicing') void invoicingAccess.refreshIfOpen();
     if (view === 'account') void sandboxSubscription.refreshIfOpen();
+    if (view === 'administration') void subscriptionPricing.refreshIfOpen();
 });
 
 function message(id, text) {

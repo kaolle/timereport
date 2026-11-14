@@ -70,6 +70,7 @@
             <button type="button" data-view="report" aria-controls="monthly-report">Månadsrapport</button>
             <button type="button" data-view="invoicing" aria-controls="invoicing-view">Fakturering</button>
             <button type="button" data-view="account" aria-controls="account-view">Konto</button>
+            <button type="button" id="administration-navigation" data-view="administration" aria-controls="administration-view" hidden>Administration</button>
             <button type="button" data-view="installation" aria-controls="installation-view">Installation</button>
         </nav>
         <p id="sync-summary" class="sync-summary" role="status" hidden></p>
@@ -148,6 +149,29 @@
                 min</strong><p id="report-vacation-total"></p></div>
             <p id="report-status" class="field-help" role="status"></p>
             <div id="report-weeks" class="report-weeks"></div>
+        </section>
+        <section id="administration-view" class="panel" data-view-panel="administration" aria-labelledby="administration-title" hidden>
+            <h2 id="administration-title">Administration</h2>
+            <h3>Abonnemangspriser</h3>
+            <p>Skapa priser i Stripes testmiljö och välj aktuellt pris för månads- och årsköp.
+                Ett nytt aktuellt pris gäller nya köp. Befintliga abonnemang behåller sitt pris.</p>
+            <form id="subscription-price-form" class="billing-form">
+                <fieldset id="subscription-price-fields">
+                    <legend>Nytt pris</legend>
+                    <div class="billing-grid">
+                        <div class="field"><label for="subscription-price-name">Namn</label><input id="subscription-price-name" maxlength="100" required placeholder="Fakturering Standard"></div>
+                        <div class="field"><label for="subscription-price-plan">Betalningsintervall</label><select id="subscription-price-plan"><option value="MONTHLY">Varje månad</option><option value="YEARLY">Varje år</option></select></div>
+                        <div class="field"><label for="subscription-price-amount">Belopp per period (SEK)</label><input id="subscription-price-amount" type="number" inputmode="decimal" min="0.01" max="1000000" step="0.01" required></div>
+                        <div class="field"><label for="subscription-price-vat">Moms (%)</label><input id="subscription-price-vat" type="number" inputmode="decimal" min="0" max="100" step="0.01" value="25" required></div>
+                    </div>
+                    <label class="price-vat-option"><input id="subscription-price-inclusive" type="checkbox"> Beloppet inkluderar moms</label>
+                    <p id="subscription-price-total" class="field-help" aria-live="polite"></p>
+                </fieldset>
+                <button id="subscription-price-create" type="submit" class="primary-button">Skapa pris i Stripe</button>
+            </form>
+            <p id="subscription-price-status" role="status" aria-live="polite"></p>
+            <button id="subscription-prices-refresh" type="button" class="secondary-button">Hämta priser</button>
+            <div id="subscription-price-list" class="subscription-price-list"></div>
         </section>
         <section id="account-view" class="panel account-tools" data-view-panel="account" aria-labelledby="account-title" hidden>
             <h2 id="account-title">Konto</h2>

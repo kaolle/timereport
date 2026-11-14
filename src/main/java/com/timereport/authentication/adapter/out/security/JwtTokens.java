@@ -1,6 +1,7 @@
 package com.timereport.authentication.adapter.out.security;
 
 import com.timereport.authentication.application.port.out.Tokens;
+import com.timereport.authentication.application.port.out.AccountRoles;
 import com.timereport.authentication.domain.Account;
 import com.timereport.authentication.domain.Session;
 import io.smallrye.jwt.build.Jwt;
@@ -11,13 +12,17 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
-import java.util.Set;
 
 @ApplicationScoped
 public class JwtTokens implements Tokens {
     private final SecureRandom random = new SecureRandom();
+    private final AccountRoles roles;
     @ConfigProperty(name = "auth.issuer")
     String issuer;
+
+    public JwtTokens(AccountRoles roles) {
+        this.roles = roles;
+    }
 
     @Override
     public String random() {
@@ -39,7 +44,7 @@ public class JwtTokens implements Tokens {
     @Override
     public String access(Account account, Session session) {
         return Jwt.issuer(issuer).audience("timereport").subject(account.id().toString())
-                .groups(Set.of("user")).claim("account_id", account.id().toString())
+                .groups(roles.roles(account.id())).claim("account_id", account.id().toString())
                 .claim("sid", session.id().toString()).expiresIn(accessLifetimeSeconds()).sign();
     }
 

@@ -410,6 +410,17 @@ dialog p { font-size: 14px; color: var(--muted); }
 
 .subscription-sandbox h3 { margin-top: 0; }
 
+.price-vat-option { display: flex; align-items: center; gap: 10px; margin: 14px 0; }
+.price-vat-option input { width: 22px; height: 22px; }
+.subscription-price-list { display: grid; gap: 14px; margin-top: 20px; }
+.subscription-price-card { padding: 18px; border: 1px solid var(--line); border-radius: 12px; }
+.subscription-price-card h4 { margin: 0 0 10px; font-size: 18px; }
+.subscription-price-card p { margin: 8px 0; }
+.subscription-price-card.current-price { border-color: var(--green); background: #f3f6f0; }
+.subscription-price-card details { margin-top: 14px; }
+.subscription-price-card code { display: block; overflow-wrap: anywhere; font-size: 12px; margin: 8px 0; }
+#subscription-price-fields { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 0 0 16px; }
+
 .customer-code-controls {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 115px;

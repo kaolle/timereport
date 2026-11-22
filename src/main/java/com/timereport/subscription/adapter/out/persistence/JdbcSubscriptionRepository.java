@@ -16,7 +16,8 @@ public class JdbcSubscriptionRepository implements SubscriptionRepository {
             SELECT s.plan, COALESCE(s.status, 'NONE') AS status, s.grace_until,
                    s.cancel_at_period_end,
                    (SELECT MAX(p.period_end) FROM subscription_paid_periods p
-                    WHERE p.account_id = requested.account_id AND p.voided_at IS NULL) AS paid_until,
+                    WHERE p.account_id = requested.account_id AND p.voided_at IS NULL
+                      AND p.period_start <= CURRENT_TIMESTAMP) AS paid_until,
                    EXISTS (SELECT 1 FROM subscription_access_grants g
                            WHERE g.account_id = requested.account_id AND g.kind = 'OWNER'
                              AND g.revoked_at IS NULL) AS owner_access

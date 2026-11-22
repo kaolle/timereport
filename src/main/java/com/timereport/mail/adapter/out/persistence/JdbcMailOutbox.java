@@ -56,6 +56,22 @@ public class JdbcMailOutbox implements MailOutbox {
     }
 
     @Override
+    @Transactional(Transactional.TxType.MANDATORY)
+    public boolean cancel(MailReference reference, Instant now) {
+        try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(
+                "UPDATE mail_outbox SET state='CANCELLED',payload=NULL,completed_at=?,next_attempt_at=NULL "
+                        + "WHERE id=? AND account_id=? AND type=? AND state='PENDING'")) {
+            statement.setTimestamp(1, Timestamp.from(now));
+            statement.setObject(2, reference.id());
+            statement.setObject(3, reference.accountId());
+            statement.setString(4, reference.type());
+            return statement.executeUpdate() == 1;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Mail cancellation failed", e);
+        }
+    }
+
+    @Override
     @Transactional(Transactional.TxType.REQUIRES_NEW)
     public Optional<MailClaim> claim(Instant now, Instant leaseUntil) {
         UUID lease = UUID.randomUUID();

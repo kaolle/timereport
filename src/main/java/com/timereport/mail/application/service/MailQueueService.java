@@ -30,4 +30,9 @@ public class MailQueueService implements QueueMail {
     public void cancel(UUID accountId, String type) {
         outbox.cancel(accountId, type, clock.instant());
     }
+
+    @Override
+    public boolean cancel(MailReference reference) {
+        return outbox.cancel(reference, clock.instant());
+    }
 }

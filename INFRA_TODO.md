@@ -61,15 +61,46 @@ samt verifiering av konton, tider och rapporter.
 Appen ignorerar vidarebefordrade IP-headers och kan därför dela IP-kvot mellan användare
 bakom samma proxy. Aktivera inte generell tillit till godtyckliga `X-Forwarded-For`-värden.
 
-## Autentisera Cloud Scheduler utan statisk dispatch-token
+## Etapp 3: återstående molnkonfiguration
+
+Kontrollerat 2026-11-22 för `timereport-git` i `time-report-511916`.
+
+- [x] Koppla `SUBSCRIPTION_MAINTENANCE_TOKEN` från Secret Manager och verifiera
+  att Scheduler skickar samma värde.
+- [x] Schemalägg abonnemangsavstämningen dagligen kl. 09 med `0 9 * * *`
+  och `Europe/Stockholm`.
+- [x] Verifiera att molnets Stripe-nyckel och kundportal använder testmiljön.
+- [ ] Skapa en snapshot-webhookdestination i molnets Stripe-sandbox för
+  `https://timereport-git-744465157544.europe-west3.run.app/api/subscription/webhooks/stripe`.
+- [ ] Lägg destinationens signeringshemlighet i Secret Manager och montera som
+  `STRIPE_WEBHOOK_SECRET` i Cloud Run. CLI-lyssnarens lokala hemlighet ska inte användas.
+- [ ] Aktivera `SUBSCRIPTION_WEBHOOKS_ENABLED=true` när webhookdestinationen är klar.
+- [ ] Ändra molnets explicita `SUBSCRIPTION_ENFORCE_INVOICE_ACCESS=false` till `true`.
+  Behåll `SUBSCRIPTION_INVOICING_OWNER_ONLY=true` under sandbox-utrullningen.
+- [ ] Efter deployment: verifiera webhookleverans och en lyckad maintenance-körning.
+
+Detaljer: [SUBSCRIPTION_WEBHOOKS.md](SUBSCRIPTION_WEBHOOKS.md).
+
+## Efter abonnemangsdelen: OIDC för samtliga Cloud Scheduler-jobb
+
+Planerad säkerhetsförbättring när abonnemangsfunktionerna är färdigimplementerade
+och verifierade. Nuvarande tokenlösning används tills övergången är genomförd.
+Arbetet omfattar mejlutskick, mejlrensning, abonnemangsavstämning och eventuella
+nya Scheduler-jobb som tillkommer innan dess.
 
 - [ ] Ersätt `X-Mail-Dispatch-Token` i Scheduler-jobben för `/internal/mail/dispatch` och
   `/internal/mail/cleanup` med OIDC-token från ett dedikerat servicekonto.
+- [ ] Ersätt även `X-Subscription-Maintenance-Token` för `/internal/subscription/maintain`
+  med samma princip. Ingen långlivad delad hemlighet ska behöva lagras i Scheduler.
 - [ ] Verifiera tokenens signatur, utfärdare, mottagare (`aud`) och servicekontots identitet
-  i båda endpointsen. Cloud Run-tjänsten är publik för webbsidan, så kontrollen måste ske
+  i samtliga interna endpoints. Cloud Run-tjänsten är publik för webbsidan, så kontrollen måste ske
   i applikationen. Avvisa anrop utan giltig token.
-- [ ] Uppdatera Scheduler-jobben och verifiera båda körningarna innan den statiska headern,
+- [ ] Inventera samtliga Scheduler-jobb och använd OIDC som standard för nya jobb.
+- [ ] Uppdatera Scheduler-jobben och verifiera samtliga körningar innan den statiska headern,
   `MAIL_DISPATCH_TOKEN` och motsvarande Secret Manager-hemlighet tas bort. Uppdatera `CLOUD_RUN.md`.
+- [ ] Efter verifierad övergång: ta bort `SUBSCRIPTION_MAINTENANCE_TOKEN` från Cloud Run
+  och dess Secret Manager-hemlighet. Tillåt statisk token endast i lokal utveckling;
+  en saknad eller felaktig OIDC-token får inte falla tillbaka till statisk token i produktion.
 
 [Cloud Scheduler OIDC](https://docs.cloud.google.com/scheduler/docs/http-target-auth) ·
 [Scheduler-jobbens HTTP-konfiguration](https://docs.cloud.google.com/scheduler/docs/reference/rest/v1/projects.locations.jobs)

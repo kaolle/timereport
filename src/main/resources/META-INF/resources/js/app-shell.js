@@ -71,5 +71,5 @@ export function configureNavigation(onSelect) {
     document.querySelectorAll('.main-navigation [data-view]').forEach(button => {
         button.addEventListener('click', () => showView(button.dataset.view));
     });
-
+    return {showView};
 }

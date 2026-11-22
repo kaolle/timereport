@@ -357,8 +357,9 @@ or null copy lists use the defaults; explicit empty lists suppress those copies.
 Subscription stage 1 now stores account-bound invoicing entitlements (migration V13).
 V13 keeps separate Stripe subscription agreements for repeat purchases after an unpaid
 renewal; the old paid-period history remains attached to its agreement.
-The paid-invoicing gate is disabled by default while Checkout and the existing-account
-transition are unfinished. `GET /api/subscription` returns the authenticated account's
+The paid-invoicing gate is enabled by default. The entire invoicing module requires
+a paid period, valid renewal grace or explicit owner grant; a separate owner-only
+rollout switch remains enabled while sandbox testing continues. `GET /api/subscription` returns the authenticated account's
 entitlement; only the account ID from the verified session is used. The one-time owner
 grant and its verification/revocation procedure are documented in
 [SUBSCRIPTION_OWNER_ACCESS.md](SUBSCRIPTION_OWNER_ACCESS.md). The remaining steps are in
@@ -407,9 +408,9 @@ subscriptions and open sessions keep their prices. `POST /api/subscription/porta
 same account after its Stripe Customer has been created. A second Checkout request
 reuses an open session; pending payment confirmation blocks another purchase. The
 return page says that payment is being processed. **A Checkout return does not grant
-invoicing access**: stage 3 must verify and persist Stripe payment events first.
-Automatic monthly renewal and a new purchase after an unpaid period cannot yet be
-tested end to end; those transitions require stage 3's webhook processing. An open
+invoicing access**: signed Stripe webhooks now verify and persist payment periods before access can be granted.
+Stage 3 handles renewal, failed payment, cancellation and reconciliation. Configure
+the signed webhook and maintenance job using [SUBSCRIPTION_WEBHOOKS.md](SUBSCRIPTION_WEBHOOKS.md). An open
 Checkout session can already be retried safely. Use Stripe's sandbox test cards only;
 the owner's account is unsuitable for checking paid access because it already has
 an independent grant. Remove the buyer UUID and disable Checkout after the test.
@@ -425,8 +426,8 @@ should be reused, including when returning with the browser's Back button. Test 
 declined card before completing a successful payment. A different plan is blocked
 while the first session is open; after Stripe confirms it has expired a new plan can
 be selected. Complete the successful purchase last: returning to Tidrapporten should
-say the payment is being processed, and further purchases should be blocked pending
-stage 3. Confirm that a normal, non-allowlisted account still cannot start Checkout
+initially show processing; after a verified webhook, Konto shows the paid period.
+Further purchases remain blocked while an agreement or paid period is active. Confirm that a normal, non-allowlisted account still cannot start Checkout
 and that the owner's invoicing access is preserved. Do not reset purchase tables to
 test another completed purchase.
 
@@ -836,3 +837,20 @@ JAVA_HOME=$(/usr/libexec/java_home -v 25) ./mvnw quarkus:dev
 
 Native builds remain available with `./mvnw package -Dnative` or
 `./mvnw package -Dnative -Dquarkus.native.container-build=true`.
+
+
+## Invoice subscription gate
+
+Web version 70 keeps the entire **Fakturering** view closed without a current paid
+period, valid renewal grace or explicit owner grant. The notice explains that a
+paid subscription is required and directs the user to **Konto**. UI availability
+requires both `invoicingAvailable` and `entitled`; all invoicing API paths enforce
+the same rollout/payment decision. Only the read-only customer-code label lookup
+used by free time registration is exempt.
+
+`SUBSCRIPTION_ENFORCE_INVOICE_ACCESS` now defaults to `true`. Keep it enabled when
+testing payment protection; an explicit `false` remains a legacy server-side opt-out
+and must not be used for paid production access. `SUBSCRIPTION_INVOICING_OWNER_ONLY`
+remains the separate sandbox rollout switch. Set it to `false` locally to test
+paid customers. Buying/managing a subscription remains available independently of
+invoice entitlement. Existing invoice data is retained; this gate changes access.

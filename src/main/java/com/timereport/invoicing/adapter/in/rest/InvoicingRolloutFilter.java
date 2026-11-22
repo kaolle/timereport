@@ -32,11 +32,14 @@ public class InvoicingRolloutFilter implements ContainerRequestFilter {
         if (!path.equals("api/invoicing") && !path.startsWith("api/invoicing/")) return;
         // Time registration uses this read-only label lookup without opening invoicing.
         if (path.equals("api/invoicing/customer-code-labels") && request.getMethod().equals("GET")) return;
-        if (rollout.availableTo(subscriptions.status(identity.accountId()))) return;
+        String reason = rollout.blockReason(subscriptions.status(identity.accountId()));
+        if (reason == null) return;
         request.abortWith(Response.status(Response.Status.FORBIDDEN).type(MediaType.APPLICATION_JSON)
                 .header("Cache-Control", "no-store")
-                .entity(InvoicingConflictResponse.builder().code("INVOICING_COMING_SOON")
-                        .message("Fakturering kommer snart. Du kan fortsätta registrera tid som vanligt.").build())
+                .entity(InvoicingConflictResponse.builder().code(reason)
+                        .message(reason.equals("SUBSCRIPTION_REQUIRED")
+                                ? "Fakturering kräver ett betalt abonnemang. Öppna Konto för att hantera ditt abonnemang."
+                                : "Fakturering kommer snart. Du kan fortsätta registrera tid som vanligt.").build())
                 .build());
     }
 }

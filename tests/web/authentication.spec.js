@@ -42,7 +42,9 @@ async function mock(context) {
         });
         if (path === '/api/subscription') return route.fulfill({json: {
             invoicingAvailable: state.invoicingAvailable,
-            sandboxCheckoutAvailable: state.sandboxCheckoutAvailable
+            entitled: state.invoicingAvailable,
+            sandboxCheckoutAvailable: state.sandboxCheckoutAvailable,
+            ...state.subscriptionStatus
         }});
         if (request.method() !== 'GET') {
             state.writes.push({account: state.account, body: request.postData()});
@@ -878,4 +880,64 @@ test('top navigation defaults to time, keeps the selected week and opens custome
     await expect(menu.getByRole('button', { name: 'Tider', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('.week-day.selected')).toHaveCount(0);
     expect(errors).toHaveLength(0);
+});
+
+
+test('verified paid subscription shows its period and opens the account scoped portal', async ({page, context}) => {
+    const state = await mock(context);
+    state.sandboxCheckoutAvailable = true;
+    state.subscriptionStatus = {status: 'ACTIVE', paidUntil: '2099-12-01T00:00:00Z', entitled: true};
+    const portal = 'https://billing.stripe.com/p/session/test-example';
+    await context.route('**/api/subscription/portal', route => route.fulfill({json: {url: portal}}));
+    await context.route('https://billing.stripe.com/**', route => route.fulfill({contentType: 'text/html', body: '<h1>Portal</h1>'}));
+    await login(page, A, {selectDay: false});
+    await page.getByRole('button', {name: 'Konto', exact: true}).click();
+    await expect(page.locator('#subscription-sandbox-status')).toContainText('betalt till');
+    await expect(page.locator('#subscription-buy-monthly')).toBeDisabled();
+    await page.getByRole('button', {name: 'Hantera abonnemang', exact: true}).click();
+    await expect(page).toHaveURL(portal);
+});
+
+test('renewal email opens account after login and strips the internal navigation hint', async ({page, context}) => {
+    const state = await mock(context);
+    state.sandboxCheckoutAvailable = true;
+    state.subscriptionStatus = {status: 'CANCELED', paidUntil: null};
+    await page.goto('/?subscription=manage');
+    await expect(page.locator('#auth-panel')).toBeVisible();
+    await page.locator('#auth-email').fill(A.email);
+    await page.locator('#auth-password').fill('a sufficiently long password');
+    await page.locator('#auth-submit').click();
+    await expect(page.locator('#account-view')).toBeVisible();
+    await expect(page.locator('#subscription-sandbox-status')).toContainText('avslutat');
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.locator('#subscription-buy-monthly')).toBeEnabled();
+});
+
+
+test('unpaid account sees only subscription explanation and cannot open any invoicing forms', async ({page, context}) => {
+    const state = await mock(context);
+    state.invoicingAvailable = false;
+    state.subscriptionStatus = {entitled: false, invoicingBlockReason: 'SUBSCRIPTION_REQUIRED'};
+    await login(page, A, {selectDay: false});
+    await page.getByRole('button', {name: 'Fakturering', exact: true}).click();
+    await expect(page.locator('#invoicing-availability-title')).toHaveText('Abonnemang krävs för fakturering');
+    await expect(page.locator('#invoicing-availability-message')).toContainText('betalt abonnemang');
+    await expect(page.locator('.invoice-navigation')).toBeHidden();
+    await expect(page.locator('#invoice-panel-new')).toBeHidden();
+    expect(state.writes).toHaveLength(0);
+    state.invoicingAvailable = true;
+    state.subscriptionStatus.entitled = true;
+    await page.locator('#invoicing-availability-retry').click();
+    await expect(page.locator('#invoicing-coming-soon')).toBeHidden();
+    await expect(page.locator('.invoice-navigation')).toBeVisible();
+});
+
+test('invoicing UI refuses a rollout-only available flag without payment entitlement', async ({page, context}) => {
+    const state = await mock(context);
+    state.invoicingAvailable = true;
+    state.subscriptionStatus = {entitled: false};
+    await login(page, A, {selectDay: false});
+    await page.getByRole('button', {name: 'Fakturering', exact: true}).click();
+    await expect(page.locator('#invoicing-availability-title')).toHaveText('Abonnemang krävs för fakturering');
+    await expect(page.locator('.invoice-navigation')).toBeHidden();
 });

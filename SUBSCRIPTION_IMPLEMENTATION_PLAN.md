@@ -1,7 +1,9 @@
 # Implementeringsplan: betald fakturering i Tidrapporten
 
-Datum: 2026-11-02. Status: etapp 1 klar; etapp 2:s backend och testläge påbörjade.
-Stripe-händelser och skarp betalspärr återstår.
+Datum: 2026-11-22. Status: etapp 1–2 klara; etapp 3 implementerad för sandbox och lokalt verifierad.
+Skarpa betalningar och produktionsspärr aktiveras först enligt etapp 6.
+Konfiguration: [SUBSCRIPTION_WEBHOOKS.md](SUBSCRIPTION_WEBHOOKS.md) och
+[SUBSCRIPTION_MAINTENANCE.md](SUBSCRIPTION_MAINTENANCE.md).
 
 ## Mål och avgränsning
 
@@ -108,10 +110,10 @@ leverantören alltid enbart är biträde. Se
 | Funktion | Utan aktivt abonnemang, föreslaget beteende |
 | --- | --- |
 | Tider, semester, månadsrapport, synkning och kundkoder | Tillgängliga som tidigare, även offline där det stöds |
-| Ditt företag, kunder och koppling av kundkoder | Tillgängliga för grunduppgifter och förberedelse |
+| Hela Fakturering: Ditt företag, kunder, underlag och fakturor | Stängd med förklaringen att ett betalt abonnemang krävs |
 | Nya fakturautkast, PDF-förhandsgranskning, utfärdande och mejlutskick | Kräver abonnemang eller ägaråtkomst |
-| Befintliga fakturor och deras lagrade PDF:er | Läsning/nedladdning fortsatt tillgänglig |
-| Betald-/Skickad-markering på befintliga fakturor | Fortsatt tillgänglig |
+| Befintliga fakturor och deras lagrade PDF:er | Bevaras, men åtkomst via Fakturering kräver abonnemang eller ägaråtkomst |
+| Betald-/Skickad-markering på befintliga fakturor | Kräver abonnemang eller ägaråtkomst |
 
 **Klart när:** konto A inte kan använda konto B:s rättighet, spärren gäller direkta
 API-anrop, och det går att ge/återkalla ditt ägarundantag med ett avgränsat driftkommando
@@ -184,7 +186,8 @@ dubbel period; missad webhook kan återhämtas utan ny debitering.
 - Stripe Customer Portal används för kortbyte, betalningsunderlag och uppsägning.
   Portalens Customer-id väljs på servern och får aldrig komma från en godtycklig klientparameter.
 - Lägg en tydlig uppgraderingsmöjlighet vid de skyddade fakturafunktionerna.
-  Kundkoder ligger idag under Fakturering → Kunder; spärra därför inte hela menyn.
+  Beslutat 2026-11-22: hela Fakturering spärras för obetalda konton. Kundkoder kan
+  fortfarande skapas direkt vid tidsregistrering; etikettuppslag är undantaget.
 - Visa begripligt fel vid avvisad åtgärd, exempelvis `SUBSCRIPTION_REQUIRED`, med
   länk till Abonnemang. Bevara formulärinnehåll. Förnya status efter retur/fokus.
 - Betalning kräver nät. Störningar i Stripe eller abonnemangskontroll får inte

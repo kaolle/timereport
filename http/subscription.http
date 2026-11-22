@@ -1,0 +1,15 @@
+# Lokala abonnemangsanrop för IntelliJ HTTP Client.
+# Välj "timereport-local" under "Run with". Token hämtas från http-client.private.env.json.
+# Tjänsten måste vara startad med samma SUBSCRIPTION_MAINTENANCE_TOKEN.
+
+@baseUrl = http://localhost:8080
+
+### Stäm av Stripe-abonnemang och hantera förnyelsepåminnelser
+# @name maintainSubscriptions
+# @no-log
+POST {{baseUrl}}/internal/subscription/maintain
+X-Subscription-Maintenance-Token: {{SUBSCRIPTION_MAINTENANCE_TOKEN}}
+Accept: application/json
+
+# Svaret visar checked, failed, remindersQueued och terminated.
+# HTTP 503 med summering betyder att minst ett konto behöver ett nytt försök.

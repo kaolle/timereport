@@ -39,7 +39,7 @@ public class SubscriptionResource {
     public SubscriptionStatusResponse status() {
         var snapshot = subscriptions.status(identity.accountId());
         return SubscriptionStatusResponse.from(snapshot, Instant.now(), rollout.availableTo(snapshot),
-                rollout.canStartSandboxCheckout(snapshot));
+                rollout.canStartSandboxCheckout(snapshot), rollout.blockReason(snapshot));
     }
 
     @POST

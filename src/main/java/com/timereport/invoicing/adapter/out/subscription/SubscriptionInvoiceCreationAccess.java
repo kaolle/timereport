@@ -19,7 +19,7 @@ public class SubscriptionInvoiceCreationAccess implements InvoiceCreationAccess 
 
     @Inject
     public SubscriptionInvoiceCreationAccess(AccountIdentity identity, SubscriptionAccess subscriptions,
-                                             @ConfigProperty(name = "subscription.enforce-invoice-access", defaultValue = "false")
+                                             @ConfigProperty(name = "subscription.enforce-invoice-access", defaultValue = "true")
                                              boolean enforce) {
         this(identity, subscriptions, enforce, Clock.systemUTC());
     }

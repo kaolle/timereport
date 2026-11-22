@@ -19,10 +19,14 @@ export function configureInvoicingAccess(onAvailable) {
             const response = await authenticatedFetch('/api/subscription', {cache: 'no-store', timeoutMs: 10000});
             if (!response.ok) throw new Error();
             const subscription = await response.json();
-            if (subscription.invoicingAvailable === true) {
+            if (subscription.invoicingAvailable === true && subscription.entitled === true) {
                 view.classList.remove('invoicing-restricted');
                 notice.hidden = true;
                 void onAvailable();
+            } else if (subscription.invoicingAvailable === true
+                || subscription.invoicingBlockReason === 'SUBSCRIPTION_REQUIRED') {
+                title.textContent = 'Abonnemang krävs för fakturering';
+                message.textContent = 'För att använda Fakturering behöver du ett betalt abonnemang. Öppna Konto för att köpa eller hantera ditt abonnemang. Du kan fortsätta registrera tid och se månadsrapporter som vanligt.';
             } else if (subscription.invoicingAvailable === false) {
                 title.textContent = 'Fakturering kommer snart';
                 message.textContent = 'Faktureringen planeras att öppna kring årsskiftet. Du kan redan nu registrera tid och kundkoder.';

@@ -96,7 +96,7 @@ const customerCodes = configureCustomerCodes({
 const {renderCodes, refreshCodes, refreshBillingLabels} = customerCodes;
 
 
-configureNavigation(view => {
+const navigation = configureNavigation(view => {
     if (view === 'report') void monthlyReport.refreshIfOpen();
     if (view === 'invoicing') void invoicingAccess.refreshIfOpen();
     if (view === 'account') void sandboxSubscription.refreshIfOpen();
@@ -113,6 +113,7 @@ if (subscriptionReturn.has('subscription')) {
     const result = subscriptionReturn.get('subscription');
     if (result === 'processing') message('notice', 'Betalningen behandlas. Faktureringen öppnas först när betalningen har bekräftats.');
     if (result === 'cancelled') message('notice', 'Köpet avbröts. Ingen betalning har bekräftats.');
+    if (['manage', 'processing', 'returned'].includes(result)) navigation.showView('account');
     subscriptionReturn.delete('subscription');
     const remaining = subscriptionReturn.toString();
     history.replaceState(null, '', `${location.pathname}${remaining ? `?${remaining}` : ''}${location.hash}`);

@@ -77,6 +77,7 @@ class StripeBillingGatewayTest {
             assertEquals(account.toString(), p.getMetadata().get("timereport_account_id"));
             assertEquals(model.id().toString(), p.getMetadata().get("timereport_price_model_id"));
             assertEquals(model.id().toString(), p.getSubscriptionData().getMetadata().get("timereport_price_model_id"));
+            assertEquals(attempt.toString(), p.getSubscriptionData().getMetadata().get("timereport_checkout_attempt_id"));
             assertEquals(1L, p.getLineItems().getFirst().getQuantity());
             assertEquals("http://localhost:8080/?subscription=processing", p.getSuccessUrl());
         }

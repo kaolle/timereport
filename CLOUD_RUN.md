@@ -213,8 +213,8 @@ spårbar ägaråtkomst. Varje Stripe-abonnemang får en egen historikrad så att
 återvändande kund kan starta ett nytt abonnemang efter en obetald period.
 Verifiera grant-raden efter deployment enligt
 [SUBSCRIPTION_OWNER_ACCESS.md](SUBSCRIPTION_OWNER_ACCESS.md). Låt
-`SUBSCRIPTION_ENFORCE_INVOICE_ACCESS` vara avstängd tills köpen och övergången för
-befintliga konton är färdiga.
+`SUBSCRIPTION_ENFORCE_INVOICE_ACCESS=true` vara påslagen för att neka obetalda
+konton åtkomst. Standardvärdet är nu `true`; ta bort eventuella äldre `false`-värden.
 `SUBSCRIPTION_INVOICING_OWNER_ONLY=true` är på som standard under testperioden.
 Den begränsar fakturerings-API:et och Stripe Checkout/Portal till konton med aktiv
 `OWNER`-behörighet. Andra användare kan registrera tid och ser en ”kommer snart”-vy.
@@ -231,9 +231,9 @@ från Cloud Run efter uppgraderingen. Konfigurera `STRIPE_PORTAL_CONFIGURATION`
 som vanlig miljövariabel för kundportalen med planbyte avstängt. Lägg `STRIPE_SECRET_KEY`
 (`sk_test_...`) i Secret Manager och ge runtime-kontot åtkomst. Prisadministration
 kan förberedas med Checkout avstängd. Använd aldrig en
-live-nyckel i etapp 2; koden avvisar den. Checkout aktiverar inte fakturering förrän
-verifierade betalhändelser hanteras i etapp 3. Låt därför
-`SUBSCRIPTION_ENFORCE_INVOICE_ACCESS=false` under denna utrullning.
+live-nyckel i etapp 2; koden avvisar den. Verifierade betalhändelser i etapp 3 lagrar betalda perioder, men
+ägarbegränsningen gäller fortfarande under sandbox-utrullningen. Behåll
+`SUBSCRIPTION_ENFORCE_INVOICE_ACCESS=true` även när ägarbegränsningen stängs av.
 En återgång till föregående Cloud Run-revision återställer bara programmet, inte databasen.
 Håll därför migreringar kompatibla med föregående revision och ordna backup före skarp drift.
 Kvarvarande infrastrukturarbete finns i [INFRA_TODO.md](INFRA_TODO.md), inklusive
@@ -258,3 +258,10 @@ Flyway V8 lägger till utskicks- och betalstatus utan att ändra utfärdade fakt
 Flyway V11 lagrar mejl i en krypterad kö. Nyckeln behövs även för kontoverifiering och
 återställning. Avslutade köposter behåller bara status; innehållet rensas.
 SENT i appen avser SMTP-acceptans; kontrollera leverans och studsar i Brevo.
+
+## Etapp 3: Stripe-händelser och avstämning
+
+V17–V18 lägger till betalningsavstämning och förnyelsepåminnelser.
+Följ [SUBSCRIPTION_WEBHOOKS.md](SUBSCRIPTION_WEBHOOKS.md) för webhook-hemligheten
+och [SUBSCRIPTION_MAINTENANCE.md](SUBSCRIPTION_MAINTENANCE.md) för Scheduler.
+Behåll ägarbegränsningen och betalspärrens befintliga flaggor under testningen.

@@ -104,6 +104,7 @@ public class StripeBillingGateway implements SubscriptionBillingGateway {
                     .setPrice(price.getId()).setQuantity(1L).addTaxRate(rate.getId()).build();
             var subscription = com.stripe.param.checkout.SessionCreateParams.SubscriptionData.builder()
                     .putMetadata("timereport_account_id", accountId.toString())
+                    .putMetadata("timereport_checkout_attempt_id", attemptId.toString())
                     .putMetadata("timereport_price_model_id", model.id().toString()).build();
             var params = com.stripe.param.checkout.SessionCreateParams.builder()
                     .setMode(com.stripe.param.checkout.SessionCreateParams.Mode.SUBSCRIPTION)

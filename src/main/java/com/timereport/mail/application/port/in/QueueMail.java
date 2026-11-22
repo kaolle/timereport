@@ -8,4 +8,5 @@ import java.util.UUID;
 public interface QueueMail {
     void enqueue(MailReference reference, MailMessage message, Instant expiresAt);
     void cancel(UUID accountId, String type);
+    boolean cancel(MailReference reference);
 }

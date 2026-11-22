@@ -75,6 +75,9 @@ Kontrollerat 2026-11-22 för `timereport-git` i `time-report-511916`.
 - [ ] Lägg destinationens signeringshemlighet i Secret Manager och montera som
   `STRIPE_WEBHOOK_SECRET` i Cloud Run. CLI-lyssnarens lokala hemlighet ska inte användas.
 - [ ] Aktivera `SUBSCRIPTION_WEBHOOKS_ENABLED=true` när webhookdestinationen är klar.
+- [ ] Aktivera Scheduler-återförsök för maintenance-jobbet, exempelvis tre försök.
+  Vid kontrollen saknades retry count (standard är noll). Höj även dess timeout
+  från 60 till exempelvis 180 sekunder så en påbörjad kontokontroll kan slutföras.
 - [ ] Ändra molnets explicita `SUBSCRIPTION_ENFORCE_INVOICE_ACCESS=false` till `true`.
   Behåll `SUBSCRIPTION_INVOICING_OWNER_ONLY=true` under sandbox-utrullningen.
 - [ ] Efter deployment: verifiera webhookleverans och en lyckad maintenance-körning.

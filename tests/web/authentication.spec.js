@@ -563,10 +563,12 @@ test('local autosave precedes delayed sync, later edits postpone upload, and man
                                                                                                                    page,
                                                                                                                    context
                                                                                                                }) => {
+    // Install and pause before the app creates timers. Leave a safe forward-only gap for slow CI calls.
+    const pausedAt = new Date();
+    await page.clock.install({time: pausedAt.getTime() - 60_000});
+    await page.clock.pauseAt(pausedAt);
     const state = await mock(context);
     await login(page);
-    await page.clock.install();
-    await page.clock.pauseAt(new Date());
     await page.locator('#start').fill('08:00');
     await page.locator('#end').fill('17:00');
     await page.locator('#end').press('Tab');

@@ -343,14 +343,16 @@ test('normal view hides device tools and shows only a compact pending status', a
 });
 
 test('returning to the app downloads updated server data without manual refresh and throttles repeated events', async ({ page, context }) => {
+    // Pause before opening the app; browser time can advance past Node's current time during a CI round trip.
+    const pausedAt = new Date();
+    await page.clock.install({time: pausedAt.getTime() - 60_000});
+    await page.clock.pauseAt(pausedAt);
     const state = await mockApi(context);
     await open(page);
     const date = await selectedDate(page);
     state.entries = [{ id: '99999999-9999-4999-8999-999999999999', date, start: '08:00', end: '17:00',
         deductedMinutes: 30, customerCode: 'FAIR1234', comment: 'Ändrad på annan enhet', version: 1 }];
     const before = state.reads.length;
-    await page.clock.install();
-    await page.clock.pauseAt(new Date());
     await page.clock.runFor(31000);
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect.poll(async () => (await snapshot(page)).entries[0]?.comment).toBe('Ändrad på annan enhet');

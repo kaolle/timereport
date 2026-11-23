@@ -152,6 +152,17 @@
         </section>
         <section id="administration-view" class="panel" data-view-panel="administration" aria-labelledby="administration-title" hidden>
             <h2 id="administration-title">Administration</h2>
+            <section class="appearance-settings" aria-labelledby="appearance-title">
+                <h3 id="appearance-title">Appens tema</h3>
+                <p>Välj utseende för hela Tidrapporten. Byt tillbaka till Vanligt efter jul och välj Jul igen nästa år.</p>
+                <form id="appearance-form">
+                    <div class="field"><label for="appearance-theme">Tema för alla användare</label>
+                        <select id="appearance-theme"><option value="STANDARD">Vanligt</option><option value="CHRISTMAS">Jul</option></select>
+                    </div>
+                    <button id="appearance-save" type="submit" class="primary-button" disabled>Spara tema</button>
+                </form>
+                <p id="appearance-status" role="status" aria-live="polite"></p>
+            </section>
             <h3>Abonnemangspriser</h3>
             <p>Skapa priser i Stripes testmiljö och välj aktuellt pris för månads- och årsköp.
                 Ett nytt aktuellt pris gäller nya köp. Befintliga abonnemang behåller sitt pris.</p>

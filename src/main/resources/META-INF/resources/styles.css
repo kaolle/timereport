@@ -903,3 +903,69 @@ dialog p { font-size: 14px; color: var(--muted); }
 .code-info { display: grid; gap: 4px; min-width: 0; flex: 1 1 120px; }
 .code-list li { align-items: center; }
 .remove-code { color: var(--red); }
+
+/* Seasonal appearance is isolated here; STANDARD uses the existing design. */
+.appearance-settings { margin: 20px 0 30px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.appearance-settings form { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+.appearance-settings .field { margin: 0; flex: 1 1 200px; max-width: 320px; }
+.appearance-settings select { width: 100%; }
+:root[data-theme="christmas"] {
+    --paper: #ffe5ea;
+    --ink: #233f35;
+    --muted: #62695e;
+    --line: #edc7cf;
+    --green: #c41638;
+    --lime: #f3dfa0;
+}
+[data-theme="christmas"] body { background: radial-gradient(ellipse at top right, #ffbdcc 0, transparent 70%), var(--paper); }
+[data-theme="christmas"] .site-header { background: #c41638; border-radius: 0 0 20px 20px; }
+[data-theme="christmas"] .site-header :is(.brand, .connection) { color: #fff; }
+[data-theme="christmas"] .site-header .app-version-label { color: #ffe4eb; }
+[data-theme="christmas"] .site-header { border-bottom: 2px solid #b99a50; }
+[data-theme="christmas"] .brand-icon { background: #c41638; color: #fff1bf; }
+[data-theme="christmas"] .brand-icon::before { content: "✦"; font-size: 24px; }
+[data-theme="christmas"] .brand-icon { font-size: 0; }
+[data-theme="christmas"] .week-total-panel,
+[data-theme="christmas"] .report-total-panel { background: #234c3b; border-top: 3px solid #b99a50; }
+[data-theme="christmas"] .main-navigation [aria-current="page"] { background: #c41638; color: white; }
+[data-theme="christmas"] :focus-visible { outline-color: #99651d; }
+
+.christmas-snow { position: fixed; inset: 0; overflow: hidden; pointer-events: none; user-select: none; z-index: 80; }
+.christmas-snow span {
+    position: absolute; top: -60px; left: var(--snow-left); color: #fff;
+    font-size: var(--snow-size); line-height: 1; opacity: .72;
+    text-shadow: 0 1px 3px #94435d55;
+    animation: christmas-snowfall var(--snow-duration) var(--snow-delay) linear infinite;
+}
+@keyframes christmas-snowfall {
+    0% { transform: translate3d(0, -60px, 0) rotate(0deg); }
+    25% { transform: translate3d(8px, 25vh, 0) rotate(8deg); }
+    50% { transform: translate3d(-8px, 50vh, 0) rotate(-8deg); }
+    75% { transform: translate3d(8px, 75vh, 0) rotate(8deg); }
+    100% { transform: translate3d(0, calc(100vh + 120px), 0) rotate(0deg); }
+}
+[data-christmas-motion="off"] .christmas-snow { display: none; }
+[data-christmas-motion="off"] .christmas-snow span { animation: none; }
+@media print { .christmas-snow { display: none; } }
+
+[data-theme="christmas"] .site-header { position: relative; padding-bottom: 74px; }
+.christmas-santas { position: absolute; left: 13%; right: 13%; bottom: -30px; height: 90px; display: flex; justify-content: space-between; pointer-events: none; user-select: none; }
+.christmas-santas svg { width: 63px; height: 90px; overflow: visible; }
+.santa-leg { --santa-duration: 3.5s; animation: santa-dangle var(--santa-duration) ease-in-out infinite alternate; }
+.santa-leg-left { transform-origin: 25px 64px; }
+.santa-leg-right { transform-origin: 45px 64px; animation-delay: -3.5s; }
+.christmas-santas svg:nth-child(2) .santa-leg { --santa-duration: 4.2s; animation-delay: -1s; }
+.christmas-santas svg:nth-child(2) .santa-leg-right { animation-delay: -5.2s; }
+@keyframes santa-dangle { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
+[data-christmas-motion="off"] .santa-leg { animation: none; }
+@media print { .christmas-santas { display: none; } }
+
+.christmas-motion-controls { max-width: 1056px; margin: 34px auto 0; padding: 0 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px; text-align: center; }
+.christmas-motion-controls button { min-height: 36px; padding: 6px 12px; font-size: 12px; }
+.christmas-motion-controls .field-help { margin: 0; }
+
+/* Explicit opt-in restores real durations despite the general reduced-motion rule above. */
+@media (prefers-reduced-motion: reduce) {
+    [data-christmas-motion="on"] .christmas-snow span { animation-duration: var(--snow-duration) !important; }
+    [data-christmas-motion="on"] .santa-leg { animation-duration: var(--santa-duration) !important; }
+}

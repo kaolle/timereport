@@ -186,6 +186,7 @@ The web modules have explicit responsibilities:
 | `customer-codes.js`     | Code picker/catalogue, activation/removal, and cached customer labels                      |
 | `connection-status.js`  | Connection, session, and pending-work messages                                             |
 | `app-shell.js`          | Version display, navigation, service-worker setup, and update notices                      |
+| `appearance.js`         | Global theme selection, public theme refresh, and cached offline appearance                |
 | `invoicing-settings.js` | Company details, customers, code assignments, and invoice numbering                        |
 | `invoice-draft.js`      | Draft editing, PDF preview, and issuing an invoice                                         |
 | `invoice-delivery.js`   | Invoice history, delivery, and payment/sent status                                         |
@@ -854,3 +855,22 @@ and must not be used for paid production access. `SUBSCRIPTION_INVOICING_OWNER_O
 remains the separate sandbox rollout switch. Set it to `false` locally to test
 paid customers. Buying/managing a subscription remains available independently of
 invoice entitlement. Existing invoice data is retained; this gate changes access.
+
+### Application appearance
+
+Administrators can select **Vanligt** or **Jul** under **Administration → Appens tema**
+and choose **Spara tema**. The setting applies to all users, including the login page.
+It stays selected until an administrator changes it; return to **Vanligt** after Christmas
+and reuse **Jul** next year. The Christmas theme adds a red background, large
+snowflakes falling slowly through a transparent layer (24–36 seconds per fall),
+and two Santas sitting on the header line with swinging legs. Decorations do not
+intercept input. Snow is hidden and the legs are still when the device requests
+reduced motion; snow also pauses in inactive tabs. **Starta/Pausa julanimationer**
+below the header lets each device explicitly enable or disable the animations,
+with the choice saved locally. This also allows opting in when the device requests
+reduced motion. Invoice PDFs and email content keep their existing appearance.
+
+Migration V19 stores the global setting. `GET /api/appearance` exposes only the theme;
+`POST /api/admin/appearance` requires both an admin JWT and a current database admin role.
+Open apps refresh the theme when they become visible or reconnect. The last theme is
+stored locally for offline use; a slow server never blocks opening the app.

@@ -1,3 +1,4 @@
+import {configureAppearance} from './appearance.js';
 import {configureCustomerCodes} from './customer-codes.js';
 import {renderConnectionStatus, renderSyncSummary as renderPendingSummary} from './connection-status.js';
 import {configureSynchronization} from './synchronization.js';
@@ -22,6 +23,7 @@ import {
 } from './storage.js';
 
 configureAppShell();
+configureAppearance();
 const currentAccount = await requireAccount();
 selectAccount(currentAccount.accountId);
 configureAccountTools(currentAccount);

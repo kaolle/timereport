@@ -951,11 +951,11 @@ dialog p { font-size: 14px; color: var(--muted); }
 [data-theme="christmas"] .site-header { position: relative; padding-bottom: 74px; }
 .christmas-santas { position: absolute; left: 13%; right: 13%; bottom: -30px; height: 90px; display: flex; justify-content: space-between; pointer-events: none; user-select: none; }
 .christmas-santas svg { width: 63px; height: 90px; overflow: visible; }
-.santa-leg { --santa-duration: 3.5s; animation: santa-dangle var(--santa-duration) ease-in-out infinite alternate; }
+.santa-leg { --santa-duration: .5s; animation: santa-dangle var(--santa-duration) ease-in-out infinite alternate; }
 .santa-leg-left { transform-origin: 25px 64px; }
-.santa-leg-right { transform-origin: 45px 64px; animation-delay: -3.5s; }
-.christmas-santas svg:nth-child(2) .santa-leg { --santa-duration: 4.2s; animation-delay: -1s; }
-.christmas-santas svg:nth-child(2) .santa-leg-right { animation-delay: -5.2s; }
+.santa-leg-right { transform-origin: 45px 64px; animation-delay: -.5s; }
+.christmas-santas svg:nth-child(2) .santa-leg { --santa-duration: .5s; animation-delay: -.2s; }
+.christmas-santas svg:nth-child(2) .santa-leg-right { animation-delay: -.7s; }
 @keyframes santa-dangle { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
 [data-christmas-motion="off"] .santa-leg { animation: none; }
 @media print { .christmas-santas { display: none; } }

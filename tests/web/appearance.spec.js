@@ -116,7 +116,8 @@ test('a device requesting reduced motion can explicitly start and pause Christma
     expect(timing.iterations).toBe('infinite');
     const legTiming = await leg.evaluate(node => ({duration: parseFloat(getComputedStyle(node).animationDuration),
         iterations: getComputedStyle(node).animationIterationCount}));
-    expect(legTiming.duration).toBeGreaterThanOrEqual(3.5);
+    // Alternating half-second swings make one full back-and-forth cycle per second.
+    expect(legTiming.duration).toBe(0.5);
     expect(legTiming.iterations).toBe('infinite');
     const start = await snow.locator('span').first().boundingBox();
     await page.waitForTimeout(600);

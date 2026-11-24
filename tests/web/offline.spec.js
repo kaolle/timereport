@@ -348,8 +348,18 @@ test('returning to the app downloads updated server data without manual refresh 
     await page.clock.install({time: pausedAt.getTime() - 60_000});
     await page.clock.pauseAt(pausedAt);
     const state = await mockApi(context);
-    await open(page);
-    const date = await selectedDate(page);
+    // Include network latency so readiness cannot accidentally stand in for a completed refresh.
+    await context.route('**/api/time-entries?**', async route => {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        await route.fallback();
+    });
+    const initialRead = page.waitForResponse(response => new URL(response.url()).pathname === '/api/time-entries');
+    await page.goto(origin);
+    await initialRead;
+    await expect(page.locator('#refresh')).toBeEnabled();
+    await expect(page.locator('#offline-readiness')).toContainText('Redo utan nät');
+    // Choosing a day starts another refresh; this scenario only needs the current week.
+    const date = await page.locator('.week-day.today').getAttribute('data-date');
     state.entries = [{ id: '99999999-9999-4999-8999-999999999999', date, start: '08:00', end: '17:00',
         deductedMinutes: 30, customerCode: 'FAIR1234', comment: 'Ändrad på annan enhet', version: 1 }];
     const before = state.reads.length;
@@ -357,10 +367,13 @@ test('returning to the app downloads updated server data without manual refresh 
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect.poll(async () => (await snapshot(page)).entries[0]?.comment).toBe('Ändrad på annan enhet');
     await expect.poll(() => state.reads.length).toBe(before + 1);
+    // Wait for refresh to finish so repeated events exercise throttling, not the in-flight guard.
+    await expect(page.locator('#refresh')).toBeEnabled();
     await page.evaluate(() => {
         window.dispatchEvent(new Event('focus'));
         document.dispatchEvent(new Event('visibilitychange'));
     });
+    await page.clock.runFor(1000);
     expect(state.reads).toHaveLength(before + 1);
     await expect(page.locator('#refresh')).toBeHidden();
 });
